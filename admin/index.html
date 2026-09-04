@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ISKCON Admin Panel - Sacred Control Center</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,400&family=Cinzel:wght@600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body>
+
+  <!-- AUTH / LOGIN MODAL SCREEN -->
+  <div id="auth-wrapper" class="auth-wrapper">
+    <div class="auth-card">
+      <div class="auth-logo">🪔</div>
+      <h1 class="auth-title">ISKCON Admin Panel</h1>
+      <p class="auth-subtitle">Sri Sri Radha Madanmohanji Temple Management</p>
+
+      <div class="auth-hint">
+        🔑 Reference ID: <strong>iskcongim</strong> | Pass: <strong>iskconrmm2023</strong> (or
+        <strong>krishna108</strong>)
+      </div>
+
+      <div id="login-error" class="badge badge-danger"
+        style="display:none; margin-bottom:1rem; padding:0.6rem; width:100%;"></div>
+
+      <form id="login-form">
+        <div class="form-group" style="text-align:left;">
+          <label class="form-label">Admin Username / ID</label>
+          <input type="text" id="login-user" class="form-input" placeholder="Enter Admin ID (e.g. iskcongim)" required />
+        </div>
+
+        <div class="form-group" style="text-align:left;">
+          <label class="form-label">Passcode / Password</label>
+          <input type="password" id="login-pass" class="form-input" placeholder="Enter Password" required />
+        </div>
+
+        <button type="submit" class="btn btn-primary"
+          style="width:100%; justify-content:center; padding:0.85rem; font-size:1rem; margin-top:0.5rem;">
+          🔓 Authenticate & Access Admin Panel
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MAIN APP CONTAINER -->
+  <div id="app-container" class="app-container" style="display:none;">
+
+    <!-- SIDEBAR NAVIGATION -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">🪔</div>
+        <div>
+          <div class="sidebar-title">ISKCON Admin</div>
+          <div class="sidebar-subtitle">Control Center</div>
+        </div>
+      </div>
+
+      <nav class="sidebar-menu">
+        <a class="nav-item active" data-view="dashboard">
+          <span class="icon">📊</span>
+          <span>Dashboard</span>
+        </a>
+        <a class="nav-item" data-view="darshan">
+          <span class="icon">🌸</span>
+          <span>Darshan & Posts</span>
+        </a>
+        <a class="nav-item" data-view="events">
+          <span class="icon">🎉</span>
+          <span>Events & Festivals</span>
+        </a>
+        <a class="nav-item" data-view="schedule">
+          <span class="icon">⏰</span>
+          <span>Aarti Timings</span>
+        </a>
+        <a class="nav-item" data-view="donations">
+          <span class="icon">💰</span>
+          <span>Donations & 80G</span>
+        </a>
+        <a class="nav-item" data-view="volunteers">
+          <span class="icon">🤝</span>
+          <span>Volunteers</span>
+        </a>
+        <a class="nav-item" data-view="media">
+          <span class="icon">🎵</span>
+          <span>Media Library</span>
+        </a>
+        <a class="nav-item" data-view="announcement">
+          <span class="icon">📢</span>
+          <span>Banner & Push</span>
+        </a>
+        <a class="nav-item" data-view="youtube">
+          <span class="icon">🔴</span>
+          <span>YouTube & Live Broadcast</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-badge">
+          <div class="user-avatar">IG</div>
+          <div class="user-info">
+            <div class="user-name">ISKCON Admin</div>
+            <div class="user-role">Temple Staff</div>
+          </div>
+        </div>
+        <button id="btn-logout" class="btn btn-secondary btn-sm" style="color:#FFF; background:rgba(255,255,255,0.15);"
+          title="Logout">🚪</button>
+      </div>
+    </aside>
+
+    <!-- MAIN WRAPPER -->
+    <main class="main-wrapper">
+
+      <!-- TOPBAR -->
+      <header class="topbar">
+        <h2 id="topbar-page-title" class="page-heading">⚙️ Dashboard Overview</h2>
+
+        <div class="topbar-actions">
+          <div class="sync-status">
+            <span class="sync-dot"></span>
+            <span>Live Sync Active (Website & App)</span>
+          </div>
+
+          <a href="../index.html" target="_blank" class="btn btn-secondary btn-sm" style="background:var(--saffron-50); color:var(--maroon-900); border:1px solid var(--gold-400); text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-weight:600;">
+            <span>🌐</span> View Live Website
+          </a>
+
+          <button id="btn-reset-data" class="btn btn-secondary btn-sm" title="Reset all data to seeds">
+            🔄 Reset Seeds
+          </button>
+        </div>
+      </header>
+
+      <!-- CONTENT AREA -->
+      <div class="content-area">
+
+        <!-- 1. DASHBOARD VIEW -->
+        <section id="view-dashboard" class="view-section active">
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-info">
+                <p>Today's Darshan</p>
+                <div id="stat-darshan-status" class="metric-value" style="font-size:1.3rem; color:var(--saffron-700);">
+                  Live</div>
+                <div class="metric-sub">Sri Sri Radha Madanmohanji</div>
+              </div>
+              <div class="metric-icon-box">🌸</div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-info">
+                <p>Total Donations (80G)</p>
+                <div id="stat-donations-total" class="metric-value">₹0</div>
+                <div class="metric-sub">Tax Exemption Receipts Issued</div>
+              </div>
+              <div class="metric-icon-box green">💰</div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-info">
+                <p>Upcoming Events</p>
+                <div id="stat-events-count" class="metric-value">0</div>
+                <div class="metric-sub">Active Festivals</div>
+              </div>
+              <div class="metric-icon-box maroon">🎉</div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-info">
+                <p>Volunteers & Inquiries</p>
+                <div id="stat-volunteers-count" class="metric-value">0</div>
+                <div class="metric-sub">Pending Review</div>
+              </div>
+              <div class="metric-icon-box">🤝</div>
+            </div>
+          </div>
+
+          <!-- Quick Action Buttons -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">⚡ Quick Management & Publishing Actions</h3>
+            </div>
+            <div style="display:flex; gap:1rem; flex-wrap:wrap;">
+              <button class="btn btn-primary" onclick="window.adminApp.openModal('darshan-modal')">📤 Publish Content
+                (Image / Video / Quote)</button>
+              <button class="btn btn-primary" onclick="window.adminApp.openModal('event-modal')">🎉 Create New
+                Event</button>
+              <button class="btn btn-secondary" onclick="window.adminApp.openModal('donation-modal')">💰 Record Manual
+                Donation</button>
+              <button class="btn btn-secondary" onclick="window.adminApp.exportCSV()">📊 Export Donations CSV</button>
+            </div>
+          </div>
+
+          <!-- Recent Donations -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">🧾 Recent Devotee Donations</h3>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Ref ID</th>
+                    <th>Donor Name</th>
+                    <th>Amount</th>
+                    <th>Purpose</th>
+                    <th>Payment Method</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody id="dashboard-donations-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. DAILY DARSHAN & CONTENT POSTS VIEW -->
+        <section id="view-darshan" class="view-section">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">🌸 Daily Deity Darshan & Media Posts</h3>
+              <button class="btn btn-primary" onclick="window.adminApp.openModal('darshan-modal')">➕ Add Image / Video /
+                Quote Post</button>
+            </div>
+
+            <div id="darshan-cards-grid" class="darshan-grid"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">📜 Published Spiritual Text Quotes (No Media Required)</h3>
+            </div>
+            <div id="quotes-cards-grid" class="quote-cards-grid"></div>
+          </div>
+        </section>
+
+        <!-- 3. EVENTS VIEW -->
+        <section id="view-events" class="view-section">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">🎉 Temple Events & Grand Festivals</h3>
+              <button class="btn btn-primary" onclick="window.adminApp.openModal('event-modal')">➕ Add Event /
+                Festival</button>
+            </div>
+
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Festival / Event</th>
+                    <th>Date & Time</th>
+                    <th>Location</th>
+                    <th>Target Destination</th>
+                    
+                  </tr>
+                </thead>
+                <tbody id="events-table-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. AARTI SCHEDULE VIEW -->
+        <section id="view-schedule" class="view-section">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">⏰ Daily Aarti & Temple Schedule</h3>
+              <button class="btn btn-primary" onclick="window.adminApp.saveScheduleForm(event)">💾 Save Schedule
+                Changes</button>
+            </div>
+
+            <form id="schedule-form" onsubmit="window.adminApp.saveScheduleForm(event)">
+              <div class="table-wrapper">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Activity Name</th>
+                      <th>Time</th>
+                      <th>Duration</th>
+                      <th>Target Platform</th>
+                    </tr>
+                  </thead>
+                  <tbody id="schedule-table-tbody"></tbody>
+                </table>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- 5. DONATIONS & 80G VIEW -->
+        <section id="view-donations" class="view-section">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">💰 Devotee Donations & 80G Tax Receipts</h3>
+              <div>
+                <button class="btn btn-secondary" onclick="window.adminApp.exportCSV()">📊 Export CSV Report</button>
+                <button class="btn btn-primary" onclick="window.adminApp.openModal('donation-modal')">➕ Record
+                  Donation</button>
+              </div>
+            </div>
+
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Ref Number</th>
+                    <th>Donor Details</th>
+                    <th>Amount</th>
+                    <th>Seva Purpose</th>
+                    <th>PAN Number</th>
+                    <th>Date</th>
+                    
+                  </tr>
+                </thead>
+                <tbody id="donations-table-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 6. VOLUNTEERS VIEW -->
+        <section id="view-volunteers" class="view-section">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">🤝 Volunteer Applications</h3>
+            </div>
+
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Vol ID</th>
+                    <th>Full Name & Contact</th>
+                    <th>Area of Interest</th>
+                    <th>Availability</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="volunteers-table-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 7. MEDIA LIBRARY VIEW -->
+        <section id="view-media" class="view-section">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">🎵 Audio Kirtans & Lectures</h3>
+              <button class="btn btn-primary" onclick="window.adminApp.openModal('audio-modal')">➕ Add Audio
+                Track</button>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Track Title</th>
+                    <th>Speaker / Artist</th>
+                    <th>Category</th>
+                    <th>Target Platform</th>
+                    <th>Duration</th>
+                  </tr>
+                </thead>
+                <tbody id="audio-list-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">📺 Video Lectures & Discourse</h3>
+              
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Video Title</th>
+                    <th>YouTube ID</th>
+                    <th>Category</th>
+                    <th>Target Platform</th>
+                    
+                  </tr>
+                </thead>
+                <tbody id="video-list-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 8. ANNOUNCEMENT & PUSH BROADCAST VIEW -->
+        <section id="view-announcement" class="view-section">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">📢 Website Header Banner Announcement</h3>
+            </div>
+
+            <form onsubmit="window.adminApp.saveAnnouncementForm(event)">
+              <div class="form-group">
+                <label class="form-label" style="display:flex; align-items:center; gap:0.5rem;">
+                  <input type="checkbox" id="ann-enabled" /> Enable Top Announcement Bar on Website
+                </label>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Target Destination</label>
+                <select id="ann-target" class="form-select">
+                  <option value="both">🌐+📱 Both (Website & Mobile App)</option>
+                  <option value="website">🌐 Website Only</option>
+                  <option value="app">📱 Mobile App Only</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Announcement Text</label>
+                <input type="text" id="ann-text" class="form-input"
+                  placeholder="e.g. 🌸 Sri Krishna Janmashtami Mahotsav 2026 Celebrations..." />
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label">CTA Link Text</label>
+                  <input type="text" id="ann-link-text" class="form-input" placeholder="e.g. View Schedule" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Target Page Hash / Link</label>
+                  <input type="text" id="ann-link-hash" class="form-input"
+                    placeholder="e.g. #/events/janmashtami-2026" />
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary">💾 Update Banner Announcement</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">🚀 Dispatch Push Notification to Mobile App</h3>
+            </div>
+
+            <form onsubmit="window.adminApp.sendPushNotification(event)">
+              <div class="form-group">
+                <label class="form-label">Target Audience Platform</label>
+                <select id="push-target" class="form-select">
+                  <option value="app">📱 Mobile App Users Only</option>
+                  <option value="website">🌐 Website Web Push Only</option>
+                  <option value="both">🌐+📱 Both (Website & Mobile App)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Notification Title</label>
+                <input type="text" id="push-title" class="form-input"
+                  placeholder="e.g. 🌸 Today's Mangala Aarti Darshan Live!" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Notification Message</label>
+                <textarea id="push-body" class="form-textarea" placeholder="Enter notification message body..."
+                  required></textarea>
+              </div>
+              <button type="submit" class="btn btn-maroon">🚀 Broadcast Push Notification</button>
+            </form>
+          </div>
+        </section>
+
+        <!-- 9. YOUTUBE & LIVE BROADCAST MANAGER VIEW -->
+        <section id="view-youtube" class="view-section">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">🔴 YouTube Channel & Live Broadcast Controls</h3>
+              <span class="badge badge-success">Connected: @iskcongandhidhamofficial</span>
+            </div>
+            <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1.25rem;">
+              Wire and control YouTube Live Broadcasts, Long Videos, YouTube Shorts, and Community Posts for the official ISKCON Gandhidham channel.
+            </p>
+
+            <form onsubmit="window.adminApp.saveYouTubeLiveConfig(event)">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label">Live Stream Status</label>
+                  <select id="yt-live-status" class="form-select">
+                    <option value="live">🔴 LIVE NOW — Broadcast active in app & website</option>
+                    <option value="offline">⚪ OFFLINE — No active live stream</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">YouTube Channel Handle</label>
+                  <input type="text" id="yt-channel-handle" class="form-input" value="@iskcongandhidhamofficial" required />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Live Stream Video Title</label>
+                <input type="text" id="yt-live-title" class="form-input" value="🔴 Mangala Aarti & Srimad Bhagavatam Discourse — Live from ISKCON Gandhidham" required />
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label">Live Stream Video ID or URL</label>
+                  <input type="text" id="yt-live-videoid" class="form-input" value="live_gandhidham_01" placeholder="e.g. dQw4w9WgXcQ or live_gandhidham_01" required />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Current Viewers Display</label>
+                  <input type="text" id="yt-live-viewers" class="form-input" value="1,420 watching" />
+                </div>
+              </div>
+
+              <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-top:1rem;">
+                <button type="submit" class="btn btn-primary">💾 Save YouTube Live Broadcast Config</button>
+                <button type="button" class="btn btn-maroon" onclick="window.adminApp.broadcastLiveNotification()">🚀 Trigger Live Alert Notification to App Users</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- YouTube Media Content Stats Card -->
+          <div class="card" style="margin-top:1.5rem;">
+            <div class="card-header">
+              <h3 class="card-title">📹 Synced Channel Content Overview</h3>
+            </div>
+            <div class="metrics-grid">
+              <div class="metric-card">
+                <div class="metric-info">
+                  <p>Long Videos</p>
+                  <div class="metric-value">4 Synced</div>
+                  <div class="metric-sub">Lectures & Kirtans</div>
+                </div>
+                <div class="metric-icon-box">🎬</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-info">
+                  <p>YouTube Shorts</p>
+                  <div class="metric-value">3 Active</div>
+                  <div class="metric-sub">Vertical Feed</div>
+                </div>
+                <div class="metric-icon-box maroon">⚡</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-info">
+                  <p>Community Posts</p>
+                  <div class="metric-value">2 Feed Items</div>
+                  <div class="metric-sub">Channel Announcements</div>
+                </div>
+                <div class="metric-icon-box green">📢</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+  </div>
+
+  <!-- MODALS -->
+
+  <!-- UNIVERSAL CONTENT PUBLISH MODAL (IMAGE / VIDEO / TEXT QUOTE) -->
+  <div id="darshan-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">📤 Publish New Content Post</h3>
+        <button class="modal-close" onclick="window.adminApp.closeModal('darshan-modal')">&times;</button>
+      </div>
+
+      <!-- Content Format Selector Tabs -->
+      <div class="type-selector-tabs">
+        <button type="button" class="type-tab active" data-type="image"
+          onclick="window.adminApp.setFormContentType('image')">🖼️ Image Photo</button>
+        <button type="button" class="type-tab" data-type="video"
+          onclick="window.adminApp.setFormContentType('video')">🎬 Video Clip</button>
+        <button type="button" class="type-tab" data-type="quote"
+          onclick="window.adminApp.setFormContentType('quote')">📜 Text Quote (No Media)</button>
+      </div>
+
+      <form onsubmit="window.adminApp.saveDarshanForm(event)">
+        
+        <div class="form-group">
+          <label class="form-label">Select Upload Target Destination</label>
+          <select id="darshan-target" class="form-select" required>
+            <option value="both">🌐+📱 Both (Website & Mobile App)</option>
+            <option value="website">🌐 Website Only</option>
+            <option value="app">📱 Mobile App Only</option>
+          </select>
+        </div>
+
+        <!-- IMAGE / VIDEO MEDIA GROUP -->
+        <div id="group-media-upload">
+          <div class="form-group">
+            <label class="form-label">Upload Local Image/Video File</label>
+            <input type="file" id="darshan-file-input" class="form-input" accept="image/*,video/*" />
+            <small style="color:var(--text-muted); font-size:0.8rem; margin-top:0.25rem; display:block;">Or paste
+              image/video direct URL below</small>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Image or Video URL</label>
+            <input type="url" id="darshan-img-url" class="form-input"
+              placeholder="https://images.unsplash.com/photo-..." />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Deity / Topic Title</label>
+            <input type="text" id="darshan-deity" class="form-input" value="Sri Sri Radha Madanmohanji" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Caption / Blessing Message</label>
+            <input type="text" id="darshan-quote" class="form-input"
+              placeholder="e.g. Today's Sacred Shringar Darshan..." />
+          </div>
+        </div>
+
+        <!-- TEXT QUOTE GROUP (NO MEDIA REQUIRED) -->
+        <div id="group-quote-input" style="display:none;">
+          <div class="form-group">
+            <label class="form-label">Spiritual Quote / Message Text</label>
+            <textarea id="quote-text-input" class="form-textarea"
+              placeholder="Type quote text here... e.g. You have a right to perform your prescribed duties..."></textarea>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Author / Speaker / Source</label>
+              <input type="text" id="quote-author-input" class="form-input"
+                placeholder="e.g. Bhagavad Gita 2.47 or Srila Prabhupada" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Category</label>
+              <input type="text" id="quote-category-input" class="form-input" placeholder="e.g. Srila Prabhupada Vani"
+                value="Vedic Wisdom" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Quote Card Background Theme</label>
+            <select id="quote-theme-input" class="form-select">
+              <option value="saffron-gradient">🍊 Sacred Saffron Gradient</option>
+              <option value="maroon-gradient">🍷 Royal Vaisnava Maroon Gradient</option>
+              <option value="gold-gradient">✨ Divine Gold Gradient</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:1.5rem;">
+          <button type="button" class="btn btn-secondary"
+            onclick="window.adminApp.closeModal('darshan-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">📤 Publish Post</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- EVENT MODAL WITH FILE & URL UPLOAD -->
+  <div id="event-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">🎉 Event & Festival Manager</h3>
+        <button class="modal-close" onclick="window.adminApp.closeModal('event-modal')">&times;</button>
+      </div>
+      <form onsubmit="window.adminApp.saveEventForm(event)">
+        <input type="hidden" id="event-id" />
+        <div class="form-group">
+          <label class="form-label">Select Upload Target Destination</label>
+          <select id="event-target" class="form-select" required>
+            <option value="both">🌐+📱 Both (Website & Mobile App)</option>
+            <option value="website">🌐 Website Only</option>
+            <option value="app">📱 Mobile App Only</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Event Title</label>
+          <input type="text" id="event-title" class="form-input" placeholder="e.g. Janmashtami Mahotsav" required />
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select id="event-category" class="form-select">
+              <option value="Grand Festival">Grand Festival</option>
+              <option value="Festival">Festival</option>
+              <option value="Kirtan">Kirtan</option>
+              <option value="Lecture">Lecture</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Date</label>
+            <input type="text" id="event-date" class="form-input" placeholder="e.g. September 04, 2026" required />
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Time</label>
+            <input type="text" id="event-time" class="form-input" placeholder="e.g. 04:30 AM - Midnight" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Location</label>
+            <input type="text" id="event-location" class="form-input" placeholder="Main Temple Sanctuary" required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Speaker / Guest</label>
+          <input type="text" id="event-speaker" class="form-input" placeholder="e.g. HH Radhanath Swami" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Poster Image / File URL</label>
+          <input type="url" id="event-img" class="form-input" placeholder="https://..." required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea id="event-desc" class="form-textarea" placeholder="Event details..." required></textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+          <button type="button" class="btn btn-secondary"
+            onclick="window.adminApp.closeModal('event-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Event</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- DONATION MODAL -->
+  <div id="donation-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">💰 Record Manual Devotee Donation</h3>
+        <button class="modal-close" onclick="window.adminApp.closeModal('donation-modal')">&times;</button>
+      </div>
+      <form onsubmit="window.adminApp.saveDonationForm(event)">
+        <div class="form-group">
+          <label class="form-label">Donor Full Name</label>
+          <input type="text" id="don-name" class="form-input" placeholder="e.g. Rajesh Kumar" required />
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Amount (INR)</label>
+            <input type="number" id="don-amount" class="form-input" placeholder="501" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">PAN Number (For 80G)</label>
+            <input type="text" id="don-pan" class="form-input" placeholder="ABCDE1234F"
+              style="text-transform:uppercase;" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Seva Purpose</label>
+          <select id="don-purpose" class="form-select">
+            <option value="Anna Daan — Food For Life Free Prasadam Seva">Anna Daan — Food For Life Prasadam</option>
+            <option value="Deity Shringar & Royal Poshak Seva">Deity Shringar & Royal Poshak Seva</option>
+            <option value="Gau Seva — Sacred Cow Protection & Fodder">Gau Seva — Cow Protection</option>
+            <option value="General Temple Maintenance Seva">General Temple Maintenance</option>
+          </select>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Phone Number</label>
+            <input type="tel" id="don-phone" class="form-input" placeholder="+91 98250 00000" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email Address</label>
+            <input type="email" id="don-email" class="form-input" placeholder="donor@example.com" />
+          </div>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+          <button type="button" class="btn btn-secondary"
+            onclick="window.adminApp.closeModal('donation-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Record & Issue 80G</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- AUDIO MEDIA MODAL -->
+  <div id="audio-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">🎵 Add Audio Kirtan / Lecture</h3>
+        <button class="modal-close" onclick="window.adminApp.closeModal('audio-modal')">&times;</button>
+      </div>
+      <form onsubmit="window.adminApp.saveAudioForm(event)">
+        <div class="form-group">
+          <label class="form-label">Select Upload Target Destination</label>
+          <select id="aud-target" class="form-select" required>
+            <option value="both">🌐+📱 Both (Website & Mobile App)</option>
+            <option value="website">🌐 Website Only</option>
+            <option value="app">📱 Mobile App Only</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Track Title</label>
+          <input type="text" id="aud-title" class="form-input" placeholder="e.g. Hare Krishna Maha Mantra Kirtan"
+            required />
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Artist / Speaker</label>
+            <input type="text" id="aud-artist" class="form-input" placeholder="e.g. HH Lokanath Swami" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select id="aud-category" class="form-select">
+              <option value="Kirtan">Kirtan</option>
+              <option value="Lecture">Lecture</option>
+              <option value="Bhajan">Bhajan</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Audio File URL (MP3)</label>
+          <input type="url" id="aud-url" class="form-input" placeholder="https://..." required />
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+          <button type="button" class="btn btn-secondary"
+            onclick="window.adminApp.closeModal('audio-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Track</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 80G PRINTABLE RECEIPT MODAL -->
+  <div id="receipt-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="receipt-header">
+        <div class="receipt-logo-text">ISKCON GANDHIDHAM</div>
+        <div class="receipt-sub">Sri Sri Radha Madanmohan Temple, Gandhidham, Kutch, Gujarat</div>
+        <div class="receipt-badge">TAX EXEMPTION RECEIPT U/S 80G OF INCOME TAX ACT 1961</div>
+      </div>
+
+      <div class="receipt-grid">
+        <div class="receipt-field">
+          <label>Receipt Reference</label>
+          <span id="rec-id">-</span>
+        </div>
+        <div class="receipt-field">
+          <label>Date & Time</label>
+          <span id="rec-date">-</span>
+        </div>
+        <div class="receipt-field">
+          <label>Donor Name</label>
+          <span id="rec-name">-</span>
+        </div>
+        <div class="receipt-field">
+          <label>PAN Number</label>
+          <span id="rec-pan">-</span>
+        </div>
+        <div class="receipt-field">
+          <label>Phone Number</label>
+          <span id="rec-phone">-</span>
+        </div>
+        <div class="receipt-field">
+          <label>Email Address</label>
+          <span id="rec-email">-</span>
+        </div>
+        <div class="receipt-field" style="grid-column: 1 / -1;">
+          <label>Seva Purpose</label>
+          <span id="rec-purpose">-</span>
+        </div>
+        <div class="receipt-field" style="grid-column: 1 / -1;">
+          <label>Transaction ID</label>
+          <span id="rec-txn">-</span>
+        </div>
+      </div>
+
+      <div class="receipt-amount-box">
+        <div style="font-size:0.85rem; color:#92400e; font-weight:600;">DONATION AMOUNT RECEIVED WITH THANKS</div>
+        <h3 id="rec-amount">₹ 0 /-</h3>
+      </div>
+
+      <div class="receipt-footer">
+        <p>This is an official computer-generated 80G tax receipt for International Society for Krishna Consciousness
+          (ISKCON).</p>
+        <p style="margin-top:0.35rem; font-weight:600; color:#881337;">Hare Krishna Hare Krishna Krishna Krishna Hare
+          Hare | Hare Rama Hare Rama Rama Rama Hare Hare</p>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:1.5rem;">
+        <button class="btn btn-secondary" onclick="window.adminApp.closeModal('receipt-modal')">Close</button>
+        <button class="btn btn-primary" onclick="window.print()">🖨️ Print 80G Receipt</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/admin-store.js"></script>
+  <script src="js/admin-app.js"></script>
+</body>
+
+</html>
