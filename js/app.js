@@ -88,7 +88,11 @@
         track.addEventListener('touchstart', () => { isHovered = true; }, { passive: true });
         track.addEventListener('touchend', () => { setTimeout(() => { isHovered = false; }, 2000); }, { passive: true });
 
-        setInterval(() => {
+        const autoSlideInterval = setInterval(() => {
+          if (!document.body.contains(track)) {
+            clearInterval(autoSlideInterval);
+            return;
+          }
           if (isHovered) return;
           const maxScroll = track.scrollWidth - track.clientWidth;
           if (maxScroll <= 10) return;

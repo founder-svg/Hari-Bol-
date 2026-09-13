@@ -296,6 +296,7 @@
     set(key, value) {
       try {
         localStorage.setItem(key, JSON.stringify(value));
+        window.dispatchEvent(new Event('storage'));
       } catch (e) {
         console.error(`Error writing ${key}:`, e);
       }

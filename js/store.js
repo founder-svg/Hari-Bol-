@@ -13,6 +13,10 @@
     VOLUNTEERS: "iskcon_gd_volunteers",
     INQUIRIES: "iskcon_gd_inquiries",
     ANNOUNCEMENT: "iskcon_gd_announcement",
+    MEDIA_AUDIO: "iskcon_gd_media_audio",
+    MEDIA_VIDEO: "iskcon_gd_media_video",
+    QUOTES: "iskcon_gd_quotes",
+    YOUTUBE_LIVE: "iskcon_gd_youtube_live",
     INITIALIZED: "iskcon_gd_init_v2"
   };
 
@@ -68,7 +72,7 @@
     }
   ];
 
-  const STORE_VERSION = "iskcon_gd_v5_full_photos_sevas";
+  const STORE_VERSION = "iskcon_gd_v6_sync_fix";
 
   class TempleStore {
     constructor() {
@@ -83,15 +87,15 @@
 
     resetToDefaults() {
       const data = window.TEMPLE_DATA || {};
-      localStorage.setItem(STORAGE_KEYS.DARSHAN, JSON.stringify(data.darshanGallery || []));
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(data.events || []));
-      localStorage.setItem(STORAGE_KEYS.SCHEDULE, JSON.stringify(data.schedule || []));
-      localStorage.setItem(STORAGE_KEYS.SEVAS, JSON.stringify(data.sevaCategories || []));
-      localStorage.setItem(STORAGE_KEYS.DONATIONS, JSON.stringify(DEFAULT_DONATIONS));
-      localStorage.setItem(STORAGE_KEYS.REGISTRATIONS, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEYS.VOLUNTEERS, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEYS.INQUIRIES, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENT, JSON.stringify(DEFAULT_ANNOUNCEMENT));
+      if (!localStorage.getItem(STORAGE_KEYS.DARSHAN)) this._set(STORAGE_KEYS.DARSHAN, data.darshanGallery || []);
+      if (!localStorage.getItem(STORAGE_KEYS.EVENTS)) this._set(STORAGE_KEYS.EVENTS, data.events || []);
+      if (!localStorage.getItem(STORAGE_KEYS.SCHEDULE)) this._set(STORAGE_KEYS.SCHEDULE, data.schedule || []);
+      if (!localStorage.getItem(STORAGE_KEYS.SEVAS)) this._set(STORAGE_KEYS.SEVAS, data.sevaCategories || []);
+      if (!localStorage.getItem(STORAGE_KEYS.DONATIONS)) this._set(STORAGE_KEYS.DONATIONS, DEFAULT_DONATIONS);
+      if (!localStorage.getItem(STORAGE_KEYS.REGISTRATIONS)) this._set(STORAGE_KEYS.REGISTRATIONS, []);
+      if (!localStorage.getItem(STORAGE_KEYS.VOLUNTEERS)) this._set(STORAGE_KEYS.VOLUNTEERS, []);
+      if (!localStorage.getItem(STORAGE_KEYS.INQUIRIES)) this._set(STORAGE_KEYS.INQUIRIES, []);
+      if (!localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENT)) this._set(STORAGE_KEYS.ANNOUNCEMENT, DEFAULT_ANNOUNCEMENT);
       localStorage.setItem(STORAGE_KEYS.INITIALIZED, STORE_VERSION);
     }
 
@@ -108,6 +112,7 @@
     _set(key, val) {
       try {
         localStorage.setItem(key, JSON.stringify(val));
+        window.dispatchEvent(new Event('storage'));
       } catch (e) {
         console.error(`Error saving ${key} to storage:`, e);
       }
@@ -116,8 +121,8 @@
     // Darshan
     getDarshan() {
       const defaults = window.TEMPLE_DATA?.darshanGallery || [];
-      const stored = this._get(STORAGE_KEYS.DARSHAN, []);
-      if (!stored || stored.length !== defaults.length || (stored[0] && stored[0].id !== defaults[0].id)) {
+      const stored = this._get(STORAGE_KEYS.DARSHAN, null);
+      if (!stored || !Array.isArray(stored) || stored.length === 0) {
         this._set(STORAGE_KEYS.DARSHAN, defaults);
         return defaults;
       }
@@ -306,6 +311,40 @@
     updateAnnouncement(announcement) {
       this._set(STORAGE_KEYS.ANNOUNCEMENT, announcement);
       return announcement;
+    }
+
+    // Media & Quotes Dynamic Synchronization
+    getMediaVideo() {
+      const defaults = window.TEMPLE_DATA?.youtubeChannel?.videos || [];
+      const stored = this._get(STORAGE_KEYS.MEDIA_VIDEO, null);
+      if (!stored || !Array.isArray(stored)) {
+        return defaults;
+      }
+      return stored;
+    }
+
+    getMediaAudio() {
+      const defaults = window.TEMPLE_DATA?.kirtans || [];
+      const stored = this._get(STORAGE_KEYS.MEDIA_AUDIO, null);
+      if (!stored || !Array.isArray(stored)) {
+        return defaults;
+      }
+      return stored;
+    }
+
+    getQuotes() {
+      const defaults = window.TEMPLE_DATA?.quotes || [];
+      const stored = this._get(STORAGE_KEYS.QUOTES, null);
+      if (!stored || !Array.isArray(stored)) {
+        return defaults;
+      }
+      return stored;
+    }
+
+    getYouTubeLive() {
+      const defaults = window.TEMPLE_DATA?.youtubeChannel?.liveStream || {};
+      const stored = this._get(STORAGE_KEYS.YOUTUBE_LIVE, null);
+      return stored ? stored : defaults;
     }
   }
 

@@ -69,6 +69,8 @@
           item.classList.add("active");
 
           this.switchView(viewTarget);
+          const sidebar = document.querySelector(".sidebar");
+          if (sidebar) sidebar.classList.remove("mobile-open");
         });
       });
 
