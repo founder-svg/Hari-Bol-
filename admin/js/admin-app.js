@@ -1,9 +1,25 @@
 /**
- * ISKCON Admin Panel - Main Application & Controller Logic
- * Support targeted destination uploading & Multi-Format Content (Image, Video, Text Quotes).
+ * ISKCON Admin Panel — Main Application & Controller Logic
+ * 
+ * Interacts with window.adminStore and window.adminAuth.
+ * Backed by Firestore and Firebase Auth with real-time UI synchronization,
+ * loading states, error states, and HTML content escaping.
  */
 
 (function () {
+  'use strict';
+
+  // Security Helper: Escape all dynamic and user-submitted strings before rendering
+  function escapeHTML(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     window.adminApp = new AdminApp();
   });
@@ -15,19 +31,25 @@
     }
 
     init() {
-      this.checkAuth();
       this.bindEvents();
-      this.renderCurrentView();
+      this.checkAuth();
+
+      // Listen for Firestore real-time updates from adminStore
+      window.addEventListener("admin:data-updated", () => {
+        if (window.adminAuth && window.adminAuth.isAuthenticated()) {
+          this.renderCurrentView();
+        }
+      });
     }
 
     checkAuth() {
       const authWrapper = document.getElementById("auth-wrapper");
       const appContainer = document.getElementById("app-container");
-      
-      if (this.store.isAuthenticated()) {
+
+      if (window.adminAuth && window.adminAuth.isAuthenticated()) {
         if (authWrapper) authWrapper.style.display = "none";
         if (appContainer) appContainer.style.display = "flex";
-        this.renderDashboard();
+        this.renderCurrentView();
       } else {
         if (authWrapper) authWrapper.style.display = "flex";
         if (appContainer) appContainer.style.display = "none";
@@ -35,36 +57,53 @@
     }
 
     bindEvents() {
-      // Login Form Submit
+      // 1. Login Form Submit (Delegated to window.adminAuth)
       const loginForm = document.getElementById("login-form");
       if (loginForm) {
-        loginForm.addEventListener("submit", (e) => {
+        loginForm.addEventListener("submit", async (e) => {
           e.preventDefault();
-          const user = document.getElementById("login-user").value.trim();
-          const pass = document.getElementById("login-pass").value.trim();
+          const email = document.getElementById("login-user").value.trim();
+          const pass = document.getElementById("login-pass").value;
           const errorMsg = document.getElementById("login-error");
+          const submitBtn = loginForm.querySelector("button[type='submit']");
 
-          if (this.store.login(user, pass)) {
-            if (errorMsg) errorMsg.style.display = "none";
-            this.showToast("Login Successful Prabhu! Welcome to ISKCON Admin Panel.", "success");
-            this.checkAuth();
-          } else {
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Verifying with Firebase...";
+          }
+          try {
+            const success = await window.adminAuth.login(email, pass);
+            if (success) {
+              if (errorMsg) {
+                errorMsg.style.display = "none";
+                errorMsg.textContent = "";
+              }
+              document.getElementById("login-pass").value = "";
+              this.showToast("Login Successful! Welcome to ISKCON Admin Panel.", "success");
+              this.checkAuth();
+            }
+          } catch (err) {
             if (errorMsg) {
-              errorMsg.textContent = "Login failed Prabhu! Please enter correct Admin ID and Password.";
+              errorMsg.textContent = err.message || "Invalid credentials";
               errorMsg.style.display = "block";
             }
-            this.showToast("Login failed Prabhu!", "error");
+            this.showToast(err.message || "Invalid credentials", "danger");
+          } finally {
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.innerHTML = `🔓 Authenticate & Access Admin Panel`;
+            }
           }
         });
       }
 
-      // Sidebar Navigation
+      // 2. Sidebar Navigation
       const navItems = document.querySelectorAll(".nav-item[data-view]");
       navItems.forEach(item => {
         item.addEventListener("click", (e) => {
           e.preventDefault();
           const viewTarget = item.getAttribute("data-view");
-          
+
           navItems.forEach(nav => nav.classList.remove("active"));
           item.classList.add("active");
 
@@ -74,53 +113,82 @@
         });
       });
 
-      // Global Logout
+      // 3. Global Logout
       const logoutBtn = document.getElementById("btn-logout");
       if (logoutBtn) {
-        logoutBtn.addEventListener("click", () => {
-          this.store.logout();
+        logoutBtn.addEventListener("click", async () => {
+          if (window.adminAuth) {
+            await window.adminAuth.logout();
+          }
           this.showToast("Logged out successfully.", "info");
           this.checkAuth();
         });
       }
 
-      // Reset Defaults
+      // 4. Listen for auth state changes (e.g. session timeout or background signout)
+      window.addEventListener("admin:auth-changed", (e) => {
+        if (!e.detail || !e.detail.authenticated) {
+          this.checkAuth();
+        } else {
+          this.checkAuth();
+        }
+      });
+
+      // 5. One-Time "Import default data" Button (Firestore Seeding)
       const resetBtn = document.getElementById("btn-reset-data");
       if (resetBtn) {
-        resetBtn.addEventListener("click", () => {
-          if (confirm("Are you sure you want to reset all demo data back to seeds?")) {
-            this.store.resetDefaults();
-            this.showToast("Seed data reset successfully!", "success");
-            this.renderCurrentView();
+        resetBtn.addEventListener("click", async () => {
+          if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+            this.checkAuth();
+            return;
+          }
+          if (confirm("Import default temple data (events, darshan, aarti schedule, sevas, announcements, live stream) into Firestore?")) {
+            try {
+              resetBtn.disabled = true;
+              resetBtn.textContent = "⏳ Importing to Firestore...";
+              await this.store.seedFirestoreDefaults();
+              this.showToast("Default temple data imported into Firestore successfully!", "success");
+              this.renderCurrentView();
+            } catch (err) {
+              this.showToast("Import failed: " + (err.message || "Permission or network error"), "danger");
+            } finally {
+              resetBtn.disabled = false;
+              resetBtn.innerHTML = `<span>📥</span> Import Default Data`;
+            }
           }
         });
       }
 
-      // File Input Change Handlers (Image & Video)
+      // 6. Image File Selection helper (Extracts repo-relative path or URL)
       const fileImgInp = document.getElementById("darshan-file-input");
       if (fileImgInp) {
         fileImgInp.addEventListener("change", (e) => {
           const file = e.target.files[0];
           if (file) {
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-              document.getElementById("darshan-img-url").value = evt.target.result;
-              this.showToast(`Selected file: ${file.name}`, "info");
-            };
-            reader.readAsDataURL(file);
+            // Note: Recommend using assets/images path or public URL for Firestore storage
+            const urlInput = document.getElementById("darshan-img-url");
+            if (urlInput && !urlInput.value) {
+              urlInput.value = `assets/images/${file.name}`;
+            }
+            this.showToast(`Selected file: ${file.name}. Ensure relative path or URL is correct.`, "info");
           }
         });
       }
     }
 
     switchView(viewName) {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
+
       const views = document.querySelectorAll(".view-section");
       views.forEach(v => v.classList.remove("active"));
 
       const targetView = document.getElementById(`view-${viewName}`);
       if (targetView) {
         targetView.classList.add("active");
-        
+
         // Update Topbar Title
         const pageTitle = document.getElementById("topbar-page-title");
         if (pageTitle) {
@@ -132,7 +200,8 @@
             donations: "💰 Donations & 80G Receipts",
             volunteers: "🤝 Volunteers & Inquiries",
             media: "🎵 Audio, Video & E-Books",
-            announcement: "📢 Banner & Push Broadcast"
+            announcement: "📢 Banner & Push Broadcast",
+            youtube: "🔴 YouTube & Live Broadcast"
           };
           pageTitle.textContent = titles[viewName] || "Admin Panel";
         }
@@ -147,11 +216,16 @@
           case "volunteers": this.renderVolunteers(); break;
           case "media": this.renderMedia(); break;
           case "announcement": this.renderAnnouncement(); break;
+          case "youtube": this.renderYouTubeLive(); break;
         }
       }
     }
 
     renderCurrentView() {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       const activeNav = document.querySelector(".nav-item.active");
       const currentView = activeNav ? activeNav.getAttribute("data-view") : "dashboard";
       this.switchView(currentView);
@@ -177,8 +251,25 @@
       }
     }
 
+    // Helper: Build loading or error banner HTML
+    _renderStateBanner(viewKey) {
+      const state = this.store.getViewState(viewKey);
+      if (state.loading) {
+        return `<div class="loading-state"><div class="spinner"></div><p>Syncing ${escapeHTML(viewKey)} with Firestore...</p></div>`;
+      }
+      if (state.error) {
+        return `<div class="error-state"><div style="font-size:1.5rem; margin-bottom:8px;">⚠️</div><p>${escapeHTML(state.error)}</p><button class="btn btn-secondary btn-sm" onclick="window.adminApp.renderCurrentView()" style="margin-top:10px;">🔄 Retry</button></div>`;
+      }
+      return null;
+    }
+
     // 1. DASHBOARD OVERVIEW
     renderDashboard() {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
+
       const darshans = this.store.getDarshans();
       const events = this.store.getEvents();
       const donations = this.store.getDonations();
@@ -186,100 +277,152 @@
 
       // Stats
       const todayDarshan = this.store.getTodayDarshan();
-      document.getElementById("stat-darshan-status").textContent = todayDarshan ? "Uploaded & Live" : "Pending Today";
-      document.getElementById("stat-events-count").textContent = events.length;
-      
+      const darshanStatusElem = document.getElementById("stat-darshan-status");
+      if (darshanStatusElem) {
+        darshanStatusElem.textContent = todayDarshan ? "Uploaded & Live" : "Pending Today";
+      }
+
+      const eventsCountElem = document.getElementById("stat-events-count");
+      if (eventsCountElem) eventsCountElem.textContent = events.length;
+
       const totalAmount = donations.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
-      document.getElementById("stat-donations-total").textContent = `₹${totalAmount.toLocaleString('en-IN')}`;
-      document.getElementById("stat-volunteers-count").textContent = volunteers.length;
+      const donTotalElem = document.getElementById("stat-donations-total");
+      if (donTotalElem) donTotalElem.textContent = `₹${totalAmount.toLocaleString('en-IN')}`;
+
+      const volCountElem = document.getElementById("stat-volunteers-count");
+      if (volCountElem) volCountElem.textContent = volunteers.length;
 
       // Recent Donations Table Preview
       const tbody = document.getElementById("dashboard-donations-tbody");
       if (tbody) {
-        tbody.innerHTML = donations.slice(0, 4).map(d => `
-          <tr>
-            <td><strong>${d.id}</strong></td>
-            <td>${d.donorName}</td>
-            <td><strong style="color:var(--saffron-700)">₹${d.amount.toLocaleString('en-IN')}</strong></td>
-            <td>${d.purpose}</td>
-            <td><span class="badge badge-success">${d.paymentMethod}</span></td>
-            <td>${d.date}</td>
-          </tr>
-        `).join("");
+        if (donations.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No donation records in Firestore yet. Click "Import Default Data" to seed demo records.</td></tr>`;
+        } else {
+          tbody.innerHTML = donations.slice(0, 4).map(d => `
+            <tr>
+              <td><strong>${escapeHTML(d.id)}</strong></td>
+              <td>${escapeHTML(d.donorName)}</td>
+              <td><strong style="color:var(--saffron-700)">₹${(Number(d.amount) || 0).toLocaleString('en-IN')}</strong></td>
+              <td>${escapeHTML(d.purpose)}</td>
+              <td><span class="badge badge-success">${escapeHTML(d.paymentMethod)}</span></td>
+              <td>${escapeHTML(d.date)}</td>
+            </tr>
+          `).join("");
+        }
       }
     }
 
     // 2. DARSHAN & SPIRITUAL POSTS MANAGER
     renderDarshan() {
-      const darshans = this.store.getDarshans();
-      const quotes = this.store.getQuotes();
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
 
       const grid = document.getElementById("darshan-cards-grid");
+      const banner = this._renderStateBanner("darshan");
+
       if (grid) {
-        grid.innerHTML = darshans.map(d => `
-          <div class="darshan-card ${d.active ? 'active' : ''}">
-            <img src="${d.imageUrl || d.image}" class="darshan-img" alt="${d.deity}" />
-            <div class="darshan-body">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                <div class="darshan-date">${d.date} ${d.active ? '• <span class="badge badge-success">Live Today</span>' : ''}</div>
-                ${this.store.getTargetBadgeHTML(d.targetPlatform || 'both')}
-              </div>
-              <div class="darshan-deity">${d.deity || d.title}</div>
-              <div class="darshan-quote">"${d.quote || d.message}"</div>
-              <div style="display:flex; gap:0.5rem; margin-top:1rem;">
-                ${!d.active ? `<button class="btn btn-primary btn-sm" onclick="window.adminApp.setDarshanActive('${d.id}')">Make Active</button>` : ''}
-                <button class="btn btn-danger btn-sm" onclick="window.adminApp.deleteDarshan('${d.id}')">Delete</button>
+        if (banner) {
+          grid.innerHTML = banner;
+          return;
+        }
+        const darshans = this.store.getDarshans();
+        if (darshans.length === 0) {
+          grid.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;">No darshan posts in Firestore. Click "+ Upload New Darshan / Post" to create one.</div>`;
+        } else {
+          grid.innerHTML = darshans.map(d => `
+            <div class="darshan-card ${d.active ? 'active' : ''}">
+              <img src="${escapeHTML(d.imageUrl || d.image)}" class="darshan-img" alt="${escapeHTML(d.deity || d.title)}" />
+              <div class="darshan-body">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                  <div class="darshan-date">${escapeHTML(d.date)} ${d.active ? '• <span class="badge badge-success">Live Today</span>' : ''}</div>
+                  ${this.store.getTargetBadgeHTML(d.targetPlatform || 'both')}
+                </div>
+                <div class="darshan-deity">${escapeHTML(d.deity || d.title)}</div>
+                <div class="darshan-quote">"${escapeHTML(d.quote || d.message)}"</div>
+                <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+                  ${!d.active ? `<button class="btn btn-primary btn-sm" onclick="window.adminApp.setDarshanActive('${escapeHTML(d.id)}')">Make Active</button>` : ''}
+                  <button class="btn btn-danger btn-sm" onclick="window.adminApp.deleteDarshan('${escapeHTML(d.id)}')">Delete</button>
+                </div>
               </div>
             </div>
-          </div>
-        `).join("");
+          `).join("");
+        }
       }
 
       // Render Text Quotes Grid
       const quotesGrid = document.getElementById("quotes-cards-grid");
       if (quotesGrid) {
+        const quotes = this.store.getQuotes();
         quotesGrid.innerHTML = quotes.map(q => `
-          <div class="quote-card ${q.bgStyle || 'saffron-gradient'}">
+          <div class="quote-card ${escapeHTML(q.bgStyle || 'saffron-gradient')}">
             <div class="quote-card-header">
-              <span class="quote-category">${q.category}</span>
+              <span class="quote-category">${escapeHTML(q.category)}</span>
               ${this.store.getTargetBadgeHTML(q.targetPlatform || 'both')}
             </div>
-            <div class="quote-text">"${q.text}"</div>
+            <div class="quote-text">"${escapeHTML(q.text)}"</div>
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <div class="quote-author">— ${q.author}</div>
-              <button class="btn btn-danger btn-sm" style="background:rgba(0,0,0,0.3); color:#fff; border:none;" onclick="window.adminApp.deleteQuote('${q.id}')">Delete</button>
+              <div class="quote-author">— ${escapeHTML(q.author)}</div>
+              <button class="btn btn-danger btn-sm" style="background:rgba(0,0,0,0.3); color:#fff; border:none;" onclick="window.adminApp.deleteQuote('${escapeHTML(q.id)}')">Delete</button>
             </div>
           </div>
         `).join("");
       }
     }
 
-    setDarshanActive(id) {
-      const list = this.store.getDarshans();
-      list.forEach(d => d.active = (d.id === id));
-      this.store.set("iskcon_gd_darshan", list);
-      this.showToast("Today's Active Darshan updated!", "success");
-      this.renderDarshan();
-    }
-
-    deleteDarshan(id) {
-      if (confirm("Delete this darshan record?")) {
-        this.store.deleteDarshan(id);
-        this.showToast("Darshan record deleted.", "info");
+    async setDarshanActive(id) {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
+      try {
+        await this.store.setDarshanActive(id);
+        this.showToast("Today's Active Darshan updated in Firestore!", "success");
         this.renderDarshan();
+      } catch (err) {
+        this.showToast("Failed to update active darshan: " + (err.message || "Network error"), "danger");
       }
     }
 
-    deleteQuote(id) {
+    async deleteDarshan(id) {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
+      if (confirm("Delete this darshan record from Firestore?")) {
+        try {
+          await this.store.deleteDarshan(id);
+          this.showToast("Darshan record deleted from Firestore.", "info");
+          this.renderDarshan();
+        } catch (err) {
+          this.showToast("Failed to delete darshan: " + (err.message || "Network error"), "danger");
+        }
+      }
+    }
+
+    async deleteQuote(id) {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       if (confirm("Delete this text quote post?")) {
-        this.store.deleteQuote(id);
-        this.showToast("Quote post deleted.", "info");
-        this.renderDarshan();
+        try {
+          await this.store.deleteQuote(id);
+          this.showToast("Quote post deleted.", "info");
+          this.renderDarshan();
+        } catch (err) {
+          this.showToast("Failed to delete quote: " + (err.message || "Network error"), "danger");
+        }
       }
     }
 
-    saveDarshanForm(e) {
+    async saveDarshanForm(e) {
       e.preventDefault();
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       const activeTab = document.querySelector(".type-tab.active");
       const contentType = activeTab ? activeTab.getAttribute("data-type") : "image";
       const targetPlatform = document.getElementById("darshan-target").value;
@@ -295,20 +438,28 @@
           return;
         }
 
-        this.store.saveQuote({ text, author, category, bgStyle, targetPlatform });
-        this.showToast(`Text Quote published for ${targetPlatform.toUpperCase()}!`, "success");
+        try {
+          await this.store.saveQuote({ text, author, category, bgStyle, targetPlatform });
+          this.showToast(`Text Quote published for ${targetPlatform.toUpperCase()}!`, "success");
+        } catch (err) {
+          this.showToast("Failed to save quote: " + (err.message || "Network error"), "danger");
+        }
       } else {
         const imageUrl = document.getElementById("darshan-img-url").value.trim();
         const deity = document.getElementById("darshan-deity").value.trim();
         const quote = document.getElementById("darshan-quote").value.trim();
 
         if (!imageUrl || !deity) {
-          this.showToast("Please provide image file/URL and deity name.", "warning");
+          this.showToast("Please provide image path/URL and deity name.", "warning");
           return;
         }
 
-        this.store.addOrUpdateDarshan({ imageUrl, deity, quote, contentType, active: true, targetPlatform });
-        this.showToast(`Media post published successfully for ${targetPlatform.toUpperCase()}!`, "success");
+        try {
+          await this.store.addOrUpdateDarshan({ imageUrl, deity, quote, contentType, active: true, targetPlatform });
+          this.showToast(`Media post published to Firestore for ${targetPlatform.toUpperCase()}!`, "success");
+        } catch (err) {
+          this.showToast("Failed to save darshan: " + (err.message || "Firestore error"), "danger");
+        }
       }
 
       this.closeModal('darshan-modal');
@@ -317,33 +468,57 @@
 
     // 3. EVENTS & FESTIVALS
     renderEvents() {
-      const events = this.store.getEvents();
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
+
       const tbody = document.getElementById("events-table-tbody");
       if (!tbody) return;
+
+      const state = this.store.getViewState("events");
+      if (state.loading) {
+        tbody.innerHTML = `<tr><td colspan="5"><div class="loading-state"><div class="spinner"></div><p>Loading events from Firestore...</p></div></td></tr>`;
+        return;
+      }
+      if (state.error) {
+        tbody.innerHTML = `<tr><td colspan="5"><div class="error-state"><p>${escapeHTML(state.error)}</p></div></td></tr>`;
+        return;
+      }
+
+      const events = this.store.getEvents();
+      if (events.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No events found in Firestore. Click "+ Add New Event" to create one.</td></tr>`;
+        return;
+      }
 
       tbody.innerHTML = events.map(e => `
         <tr>
           <td>
             <div style="display:flex; align-items:center; gap:0.75rem;">
-              <img src="${e.imageUrl}" style="width:50px; height:50px; border-radius:8px; object-fit:cover;" />
+              <img src="${escapeHTML(e.imageUrl)}" style="width:50px; height:50px; border-radius:8px; object-fit:cover;" />
               <div>
-                <strong>${e.title}</strong><br/>
-                <small style="color:var(--gold-700); font-weight:600;">${e.category}</small>
+                <strong>${escapeHTML(e.title)}</strong><br/>
+                <small style="color:var(--gold-700); font-weight:600;">${escapeHTML(e.category)}</small>
               </div>
             </div>
           </td>
-          <td>${e.date}<br/><small style="color:var(--text-muted);">${e.time}</small></td>
-          <td>${e.location}</td>
+          <td>${escapeHTML(e.date)}<br/><small style="color:var(--text-muted);">${escapeHTML(e.time)}</small></td>
+          <td>${escapeHTML(e.location)}</td>
           <td>${this.store.getTargetBadgeHTML(e.targetPlatform || 'both')}</td>
           <td>
-            <button class="btn btn-secondary btn-sm" onclick="window.adminApp.editEvent('${e.id}')">Edit</button>
-            <button class="btn btn-danger btn-sm" onclick="window.adminApp.deleteEvent('${e.id}')">Delete</button>
+            <button class="btn btn-secondary btn-sm" onclick="window.adminApp.editEvent('${escapeHTML(e.id)}')">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="window.adminApp.deleteEvent('${escapeHTML(e.id)}')">Delete</button>
           </td>
         </tr>
       `).join("");
     }
 
     editEvent(id) {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       const event = this.store.getEvents().find(e => e.id === id);
       if (!event) return;
 
@@ -361,16 +536,28 @@
       this.openModal('event-modal');
     }
 
-    deleteEvent(id) {
-      if (confirm("Delete this event?")) {
-        this.store.deleteEvent(id);
-        this.showToast("Event deleted.", "info");
-        this.renderEvents();
+    async deleteEvent(id) {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
+      if (confirm("Delete this event from Firestore?")) {
+        try {
+          await this.store.deleteEvent(id);
+          this.showToast("Event deleted from Firestore.", "info");
+          this.renderEvents();
+        } catch (err) {
+          this.showToast("Failed to delete event: " + (err.message || "Network error"), "danger");
+        }
       }
     }
 
-    saveEventForm(e) {
+    async saveEventForm(e) {
       e.preventDefault();
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       const id = document.getElementById("event-id").value;
       const title = document.getElementById("event-title").value;
       const category = document.getElementById("event-category").value;
@@ -382,30 +569,53 @@
       const targetPlatform = document.getElementById("event-target").value;
       const description = document.getElementById("event-desc").value;
 
-      this.store.saveEvent({ id, title, category, date, time, location, speaker, imageUrl, targetPlatform, description });
-      this.showToast(`Event saved for ${targetPlatform.toUpperCase()}!`, "success");
-      this.closeModal('event-modal');
-      this.renderEvents();
+      try {
+        await this.store.saveEvent({ id, title, category, date, time, location, speaker, imageUrl, targetPlatform, description });
+        this.showToast(`Event saved to Firestore for ${targetPlatform.toUpperCase()}!`, "success");
+        this.closeModal('event-modal');
+        this.renderEvents();
+      } catch (err) {
+        this.showToast("Failed to save event: " + (err.message || "Firestore error"), "danger");
+      }
     }
 
     // 4. AARTI SCHEDULE
     renderSchedule() {
-      const schedule = this.store.getSchedule();
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
+
       const tbody = document.getElementById("schedule-table-tbody");
       if (!tbody) return;
 
+      const state = this.store.getViewState("schedule");
+      if (state.loading) {
+        tbody.innerHTML = `<tr><td colspan="4"><div class="loading-state"><div class="spinner"></div><p>Loading schedule from Firestore...</p></div></td></tr>`;
+        return;
+      }
+      if (state.error) {
+        tbody.innerHTML = `<tr><td colspan="4"><div class="error-state"><p>${escapeHTML(state.error)}</p></div></td></tr>`;
+        return;
+      }
+
+      const schedule = this.store.getSchedule();
       tbody.innerHTML = schedule.map(s => `
         <tr>
-          <td><input type="text" class="form-input form-input-sm sch-name" data-id="${s.id}" value="${s.name}" /></td>
-          <td><input type="text" class="form-input form-input-sm sch-time" data-id="${s.id}" value="${s.time}" /></td>
-          <td><input type="text" class="form-input form-input-sm sch-duration" data-id="${s.id}" value="${s.duration}" /></td>
+          <td><input type="text" class="form-input form-input-sm sch-name" data-id="${escapeHTML(s.id)}" value="${escapeHTML(s.name)}" /></td>
+          <td><input type="text" class="form-input form-input-sm sch-time" data-id="${escapeHTML(s.id)}" value="${escapeHTML(s.time)}" /></td>
+          <td><input type="text" class="form-input form-input-sm sch-duration" data-id="${escapeHTML(s.id)}" value="${escapeHTML(s.duration)}" /></td>
           <td>${this.store.getTargetBadgeHTML(s.targetPlatform || 'both')}</td>
         </tr>
       `).join("");
     }
 
-    saveScheduleForm(e) {
+    async saveScheduleForm(e) {
       e.preventDefault();
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       const schedule = this.store.getSchedule();
       const nameInputs = document.querySelectorAll(".sch-name");
       const timeInputs = document.querySelectorAll(".sch-time");
@@ -421,50 +631,82 @@
         }
       });
 
-      this.store.saveSchedule(schedule);
-      this.showToast("Temple Aarti Schedule saved & synced!", "success");
+      try {
+        await this.store.saveSchedule(schedule);
+        this.showToast("Temple Aarti Schedule saved & synced to Firestore!", "success");
+      } catch (err) {
+        this.showToast("Failed to save schedule: " + (err.message || "Firestore error"), "danger");
+      }
     }
 
     // 5. DONATIONS & 80G
     renderDonations() {
-      const donations = this.store.getDonations();
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
+
       const tbody = document.getElementById("donations-table-tbody");
       if (!tbody) return;
 
+      const state = this.store.getViewState("donations");
+      if (state.loading) {
+        tbody.innerHTML = `<tr><td colspan="7"><div class="loading-state"><div class="spinner"></div><p>Loading donations from Firestore...</p></div></td></tr>`;
+        return;
+      }
+      if (state.error) {
+        tbody.innerHTML = `<tr><td colspan="7"><div class="error-state"><p>${escapeHTML(state.error)}</p></div></td></tr>`;
+        return;
+      }
+
+      const donations = this.store.getDonations();
+      if (donations.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No donation records found in Firestore.</td></tr>`;
+        return;
+      }
+
       tbody.innerHTML = donations.map(d => `
         <tr>
-          <td><strong>${d.id}</strong></td>
-          <td>${d.donorName}<br/><small style="color:var(--text-muted);">${d.phone || d.email}</small></td>
-          <td><strong style="color:var(--saffron-800)">₹${d.amount.toLocaleString('en-IN')}</strong></td>
-          <td>${d.purpose}</td>
-          <td>${d.pan || 'N/A'}</td>
-          <td>${d.date}</td>
+          <td><strong>${escapeHTML(d.id)}</strong></td>
+          <td>${escapeHTML(d.donorName)}<br/><small style="color:var(--text-muted);">${escapeHTML(d.phone || d.email || '')}</small></td>
+          <td><strong style="color:var(--saffron-800)">₹${(Number(d.amount) || 0).toLocaleString('en-IN')}</strong></td>
+          <td>${escapeHTML(d.purpose)}</td>
+          <td>${escapeHTML(d.pan || 'N/A')}</td>
+          <td>${escapeHTML(d.date)}</td>
           <td>
-            <button class="btn btn-secondary btn-sm" onclick="window.adminApp.printReceipt('${d.id}')">🖨️ 80G Receipt</button>
+            <button class="btn btn-secondary btn-sm" onclick="window.adminApp.printReceipt('${escapeHTML(d.id)}')">🖨️ 80G Receipt</button>
           </td>
         </tr>
       `).join("");
     }
 
     printReceipt(id) {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       const donation = this.store.getDonations().find(d => d.id === id);
       if (!donation) return;
 
-      document.getElementById("rec-id").textContent = donation.id;
-      document.getElementById("rec-date").textContent = donation.date;
-      document.getElementById("rec-name").textContent = donation.donorName;
+      document.getElementById("rec-id").textContent = donation.id || "";
+      document.getElementById("rec-date").textContent = donation.date || "";
+      document.getElementById("rec-name").textContent = donation.donorName || "";
       document.getElementById("rec-pan").textContent = donation.pan || "N/A";
       document.getElementById("rec-phone").textContent = donation.phone || "N/A";
       document.getElementById("rec-email").textContent = donation.email || "N/A";
-      document.getElementById("rec-purpose").textContent = donation.purpose;
-      document.getElementById("rec-txn").textContent = donation.transactionId;
-      document.getElementById("rec-amount").textContent = `₹ ${donation.amount.toLocaleString('en-IN')} /-`;
+      document.getElementById("rec-purpose").textContent = donation.purpose || "";
+      document.getElementById("rec-txn").textContent = donation.transactionId || "";
+      document.getElementById("rec-amount").textContent = `₹ ${(Number(donation.amount) || 0).toLocaleString('en-IN')} /-`;
 
       this.openModal('receipt-modal');
     }
 
-    saveDonationForm(e) {
+    async saveDonationForm(e) {
       e.preventDefault();
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       const donorName = document.getElementById("don-name").value;
       const amount = document.getElementById("don-amount").value;
       const purpose = document.getElementById("don-purpose").value;
@@ -472,45 +714,126 @@
       const phone = document.getElementById("don-phone").value;
       const email = document.getElementById("don-email").value;
 
-      this.store.recordDonation({ donorName, amount, purpose, pan, phone, email });
-      this.showToast("Manual donation recorded!", "success");
-      this.closeModal('donation-modal');
-      this.renderDonations();
+      try {
+        await this.store.recordDonation({ donorName, amount, purpose, pan, phone, email });
+        this.showToast("Manual donation recorded to Firestore!", "success");
+        this.closeModal('donation-modal');
+        this.renderDonations();
+      } catch (err) {
+        this.showToast("Failed to record donation: " + (err.message || "Firestore error"), "danger");
+      }
     }
 
     exportCSV() {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       this.store.exportDonationsCSV();
       this.showToast("Donations CSV report downloaded!", "success");
     }
 
-    // 6. VOLUNTEERS
+    // 6. VOLUNTEERS & ENQUIRIES
     renderVolunteers() {
-      const vols = this.store.getVolunteers();
-      const tbody = document.getElementById("volunteers-table-tbody");
-      if (!tbody) return;
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
 
-      tbody.innerHTML = vols.map(v => `
-        <tr>
-          <td><strong>${v.id}</strong></td>
-          <td>${v.fullName}<br/><small style="color:var(--text-muted);">${v.phone} • ${v.email}</small></td>
-          <td>${v.interest}</td>
-          <td>${v.availability}</td>
-          <td><span class="badge ${v.status === 'Approved' ? 'badge-success' : 'badge-warning'}">${v.status}</span></td>
-          <td>
-            ${v.status !== 'Approved' ? `<button class="btn btn-primary btn-sm" onclick="window.adminApp.approveVol('${v.id}')">Approve</button>` : ''}
-          </td>
-        </tr>
-      `).join("");
+      // Render Volunteer Applications
+      const tbody = document.getElementById("volunteers-table-tbody");
+      if (tbody) {
+        const state = this.store.getViewState("volunteers");
+        if (state.loading) {
+          tbody.innerHTML = `<tr><td colspan="6"><div class="loading-state"><div class="spinner"></div><p>Loading volunteer applications from Firestore...</p></div></td></tr>`;
+        } else if (state.error) {
+          tbody.innerHTML = `<tr><td colspan="6"><div class="error-state"><p>${escapeHTML(state.error)}</p></div></td></tr>`;
+        } else {
+          const vols = this.store.getVolunteers();
+          if (vols.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No volunteer applications in Firestore.</td></tr>`;
+          } else {
+            tbody.innerHTML = vols.map(v => `
+              <tr>
+                <td><strong>${escapeHTML(v.id)}</strong></td>
+                <td>${escapeHTML(v.fullName || v.name)}<br/><small style="color:var(--text-muted);">${escapeHTML(v.phone || '')} • ${escapeHTML(v.email || '')}</small></td>
+                <td>${escapeHTML(v.interest)}</td>
+                <td>${escapeHTML(v.availability)}</td>
+                <td><span class="badge ${v.status === 'Approved' ? 'badge-success' : 'badge-warning'}">${escapeHTML(v.status)}</span></td>
+                <td>
+                  ${v.status !== 'Approved' ? `<button class="btn btn-primary btn-sm" onclick="window.adminApp.approveVol('${escapeHTML(v.id)}')">Approve</button>` : '<span style="color:var(--success-color); font-weight:600;">✓ Verified</span>'}
+                </td>
+              </tr>
+            `).join("");
+          }
+        }
+      }
+
+      // Render Public Enquiries & Callbacks
+      const enqTbody = document.getElementById("enquiries-table-tbody");
+      if (enqTbody) {
+        const state = this.store.getViewState("enquiries");
+        if (state.loading) {
+          enqTbody.innerHTML = `<tr><td colspan="6"><div class="loading-state"><div class="spinner"></div><p>Loading enquiries from Firestore...</p></div></td></tr>`;
+        } else if (state.error) {
+          enqTbody.innerHTML = `<tr><td colspan="6"><div class="error-state"><p>${escapeHTML(state.error)}</p></div></td></tr>`;
+        } else {
+          const enquiries = this.store.getEnquiries();
+          if (enquiries.length === 0) {
+            enqTbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:1.5rem;">No enquiries recorded yet.</td></tr>`;
+          } else {
+            enqTbody.innerHTML = enquiries.map(e => `
+              <tr>
+                <td><strong>${escapeHTML(e.id)}</strong></td>
+                <td>${escapeHTML(e.name)}<br/><small style="color:var(--text-muted);">${escapeHTML(e.phone || '')} • ${escapeHTML(e.email || '')}</small></td>
+                <td>${escapeHTML(e.subject || 'Inquiry')}</td>
+                <td><small>${escapeHTML(e.message || '')}</small></td>
+                <td><span class="badge ${e.status === 'Resolved' ? 'badge-success' : 'badge-warning'}">${escapeHTML(e.status || 'pending')}</span></td>
+                <td>
+                  ${e.status !== 'Resolved' ? `<button class="btn btn-secondary btn-sm" onclick="window.adminApp.resolveEnquiry('${escapeHTML(e.id)}')">Mark Resolved</button>` : '<span style="color:var(--success-color); font-weight:600;">✓ Done</span>'}
+                </td>
+              </tr>
+            `).join("");
+          }
+        }
+      }
     }
 
-    approveVol(id) {
-      this.store.updateVolunteerStatus(id, "Approved");
-      this.showToast("Volunteer approved!", "success");
-      this.renderVolunteers();
+    async approveVol(id) {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
+      try {
+        await this.store.updateVolunteerStatus(id, "Approved");
+        this.showToast("Volunteer marked as Approved in Firestore!", "success");
+        this.renderVolunteers();
+      } catch (err) {
+        this.showToast("Failed to update status: " + (err.message || "Network error"), "danger");
+      }
+    }
+
+    async resolveEnquiry(id) {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
+      try {
+        await this.store.updateEnquiryStatus(id, "Resolved");
+        this.showToast("Enquiry marked as Resolved!", "success");
+        this.renderVolunteers();
+      } catch (err) {
+        this.showToast("Failed to update enquiry: " + (err.message || "Network error"), "danger");
+      }
     }
 
     // 7. MEDIA LIBRARY
     renderMedia() {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
+
       const audios = this.store.getMediaAudio();
       const videos = this.store.getMediaVideo();
 
@@ -518,11 +841,11 @@
       if (audioList) {
         audioList.innerHTML = audios.map(a => `
           <tr>
-            <td><strong>${a.title}</strong></td>
-            <td>${a.artist}</td>
-            <td>${a.category}</td>
+            <td><strong>${escapeHTML(a.title)}</strong></td>
+            <td>${escapeHTML(a.artist)}</td>
+            <td>${escapeHTML(a.category)}</td>
             <td>${this.store.getTargetBadgeHTML(a.targetPlatform || 'both')}</td>
-            <td>${a.duration}</td>
+            <td>${escapeHTML(a.duration)}</td>
           </tr>
         `).join("");
       }
@@ -531,53 +854,84 @@
       if (videoList) {
         videoList.innerHTML = videos.map(v => `
           <tr>
-            <td><strong>${v.title}</strong></td>
-            <td>${v.youtubeId}</td>
-            <td>${v.category}</td>
+            <td><strong>${escapeHTML(v.title)}</strong></td>
+            <td>${escapeHTML(v.youtubeId)}</td>
+            <td>${escapeHTML(v.category)}</td>
             <td>${this.store.getTargetBadgeHTML(v.targetPlatform || 'both')}</td>
           </tr>
         `).join("");
       }
     }
 
-    saveAudioForm(e) {
+    async saveAudioForm(e) {
       e.preventDefault();
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       const title = document.getElementById("aud-title").value;
       const artist = document.getElementById("aud-artist").value;
       const category = document.getElementById("aud-category").value;
       const targetPlatform = document.getElementById("aud-target").value;
       const url = document.getElementById("aud-url").value;
 
-      this.store.saveMediaAudio({ title, artist, category, targetPlatform, url, duration: "30:00" });
-      this.showToast(`Audio track added for ${targetPlatform.toUpperCase()}!`, "success");
-      this.closeModal('audio-modal');
-      this.renderMedia();
+      try {
+        await this.store.saveMediaAudio({ title, artist, category, targetPlatform, url, duration: "30:00" });
+        this.showToast(`Audio track added for ${targetPlatform.toUpperCase()}!`, "success");
+        this.closeModal('audio-modal');
+        this.renderMedia();
+      } catch (err) {
+        this.showToast("Failed to save audio track: " + (err.message || "Network error"), "danger");
+      }
     }
 
     // 8. ANNOUNCEMENT & PUSH
     renderAnnouncement() {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
+
       const ann = this.store.getAnnouncement();
-      document.getElementById("ann-enabled").checked = ann.enabled;
-      document.getElementById("ann-text").value = ann.text;
-      document.getElementById("ann-link-text").value = ann.linkText || "";
-      document.getElementById("ann-link-hash").value = ann.linkHash || "";
-      document.getElementById("ann-target").value = ann.targetPlatform || "both";
+      const enabledCheckbox = document.getElementById("ann-enabled");
+      const textInput = document.getElementById("ann-text");
+      const linkTextInput = document.getElementById("ann-link-text");
+      const linkHashInput = document.getElementById("ann-link-hash");
+      const targetSelect = document.getElementById("ann-target");
+
+      if (enabledCheckbox) enabledCheckbox.checked = Boolean(ann.enabled);
+      if (textInput) textInput.value = ann.text || "";
+      if (linkTextInput) linkTextInput.value = ann.linkText || "";
+      if (linkHashInput) linkHashInput.value = ann.linkHash || "";
+      if (targetSelect) targetSelect.value = ann.targetPlatform || "both";
     }
 
-    saveAnnouncementForm(e) {
+    async saveAnnouncementForm(e) {
       e.preventDefault();
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       const enabled = document.getElementById("ann-enabled").checked;
       const text = document.getElementById("ann-text").value;
       const linkText = document.getElementById("ann-link-text").value;
       const linkHash = document.getElementById("ann-link-hash").value;
       const targetPlatform = document.getElementById("ann-target").value;
 
-      this.store.saveAnnouncement({ enabled, text, linkText, linkHash, targetPlatform });
-      this.showToast(`Banner Announcement updated for ${targetPlatform.toUpperCase()}!`, "success");
+      try {
+        await this.store.saveAnnouncement({ enabled, text, linkText, linkHash, targetPlatform });
+        this.showToast(`Banner Announcement saved & synced to Firestore for ${targetPlatform.toUpperCase()}!`, "success");
+      } catch (err) {
+        this.showToast("Failed to save announcement: " + (err.message || "Firestore error"), "danger");
+      }
     }
 
     sendPushNotification(e) {
       e.preventDefault();
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       const title = document.getElementById("push-title").value;
       const body = document.getElementById("push-body").value;
       const targetPlatform = document.getElementById("push-target").value;
@@ -593,8 +947,31 @@
     }
 
     // 9. YOUTUBE LIVE MANAGEMENT
-    saveYouTubeLiveConfig(e) {
+    renderYouTubeLive() {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
+      const cfg = this.store.getYouTubeLive();
+      const statusSelect = document.getElementById("yt-live-status");
+      const handleInput = document.getElementById("yt-channel-handle");
+      const titleInput = document.getElementById("yt-live-title");
+      const videoIdInput = document.getElementById("yt-live-videoid");
+      const viewersInput = document.getElementById("yt-live-viewers");
+
+      if (statusSelect) statusSelect.value = cfg.isLive ? "live" : "offline";
+      if (handleInput) handleInput.value = cfg.handle || "@iskcongandhidhamofficial";
+      if (titleInput) titleInput.value = cfg.title || "";
+      if (videoIdInput) videoIdInput.value = cfg.videoId || "";
+      if (viewersInput) viewersInput.value = cfg.viewers || "";
+    }
+
+    async saveYouTubeLiveConfig(e) {
       if (e) e.preventDefault();
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       const status = document.getElementById("yt-live-status").value;
       const handle = document.getElementById("yt-channel-handle").value;
       const title = document.getElementById("yt-live-title").value;
@@ -602,17 +979,29 @@
       const viewers = document.getElementById("yt-live-viewers").value;
 
       const isLive = status === "live";
-      this.store.saveYouTubeLive({ isLive, handle, title, videoId, viewers });
-      this.showToast(`YouTube Live Broadcast Config Saved! (${isLive ? '🔴 LIVE' : '⚪ OFFLINE'})`, "success");
+      try {
+        await this.store.saveYouTubeLive({ isLive, handle, title, videoId, viewers });
+        this.showToast(`YouTube Live Broadcast Config Saved to Firestore! (${isLive ? '🔴 LIVE' : '⚪ OFFLINE'})`, "success");
+      } catch (err) {
+        this.showToast("Failed to save Live config: " + (err.message || "Firestore error"), "danger");
+      }
     }
 
     broadcastLiveNotification() {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       const title = document.getElementById("yt-live-title").value || "🔴 ISKCON Gandhidham is Streaming Live!";
       this.showToast(`🔴 Live Broadcast Notification Dispatched to Mobile App & Web Users! ("${title}")`, "success");
     }
 
     // UTILITIES
     openModal(id) {
+      if (!window.adminAuth || !window.adminAuth.isAuthenticated()) {
+        this.checkAuth();
+        return;
+      }
       const modal = document.getElementById(id);
       if (modal) modal.classList.add("open");
     }

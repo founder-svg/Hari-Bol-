@@ -1,0 +1,255 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Check if current authenticated user has an admin record in Firestore
+    function isAdmin() {
+      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // =========================================================================
+    // 1. PUBLIC CONTENT COLLECTIONS (Public Read, Admin Write Only)
+    // No personal, donor, or private data stored in these collections.
+    // =========================================================================
+
+    // Temple Events & Festivals
+    match /events/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Daily Darshan Posts & Deities Gallery
+    match /darshan/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Aarti & Temple Schedule
+    match /aartiSchedule/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Top Banner Announcements
+    match /announcements/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // YouTube Live Broadcast Status
+    match /liveStream/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Seva Opportunities & Sponsorship Categories
+    match /sevas/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Media Library (Audio Kirtans, Video Discourses, Wallpapers, E-Books)
+    match /media/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /mediaAudio/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /mediaVideo/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Daily Spiritual Quotes & Srila Prabhupada Vani
+    match /quotes/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Course Catalog & Youth Programs
+    match /courses/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Global Temple & Application Settings
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // 2. FORM SUBMISSIONS WITH PRIVATE / DONOR DATA
+    // Strict rules:
+    // - Public CREATE ONLY with explicit field whitelisting (keys().hasOnly())
+    // - Strict type, length, and initial status ("pending") validation
+    // - Numeric amount capped for donations (up to ₹1,00,00,000)
+    // - NO PUBLIC READ, UPDATE, OR DELETE (Admin only for full privacy)
+    // =========================================================================
+
+    // Donations & 80G Tax Exemption Pledges
+    match /donations/{donationId} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+                      request.resource.data.keys().hasOnly([
+                        'id', 'transactionId', 'date', 'timestamp',
+                        'donorName', 'email', 'phone', 'pan', 'address',
+                        'amount', 'purpose', 'paymentMethod', 'taxExempt',
+                        'status', 'createdAt'
+                      ])
+                      && request.resource.data.status == 'pending'
+                      && request.resource.data.donorName is string
+                      && request.resource.data.donorName.size() > 0
+                      && request.resource.data.donorName.size() <= 100
+                      && request.resource.data.amount is number
+                      && request.resource.data.amount > 0
+                      && request.resource.data.amount <= 10000000
+                      && (!('pan' in request.resource.data) || request.resource.data.pan == null || (request.resource.data.pan is string && request.resource.data.pan.size() <= 10))
+                      && (!('phone' in request.resource.data) || (request.resource.data.phone is string && request.resource.data.phone.size() <= 30))
+                      && (!('email' in request.resource.data) || (request.resource.data.email is string && request.resource.data.email.size() <= 100))
+                      && (!('purpose' in request.resource.data) || (request.resource.data.purpose is string && request.resource.data.purpose.size() <= 200))
+                      && (!('address' in request.resource.data) || (request.resource.data.address is string && request.resource.data.address.size() <= 500))
+                      && (!('paymentMethod' in request.resource.data) || (request.resource.data.paymentMethod is string && request.resource.data.paymentMethod.size() <= 100))
+                      && (!('transactionId' in request.resource.data) || (request.resource.data.transactionId is string && request.resource.data.transactionId.size() <= 100))
+                      && (!('id' in request.resource.data) || (request.resource.data.id is string && request.resource.data.id.size() <= 100))
+                      && (!('date' in request.resource.data) || (request.resource.data.date is string && request.resource.data.date.size() <= 100))
+                      && (!('timestamp' in request.resource.data) || request.resource.data.timestamp is number)
+                      && (!('taxExempt' in request.resource.data) || request.resource.data.taxExempt is bool)
+                    );
+    }
+
+    // Volunteer Applications
+    match /volunteers/{volunteerId} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+                      request.resource.data.keys().hasOnly([
+                        'name', 'fullName', 'phone', 'email', 'age',
+                        'interest', 'availability', 'message', 'status', 'createdAt'
+                      ])
+                      && request.resource.data.status == 'pending'
+                      && (
+                        ('name' in request.resource.data && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 100) ||
+                        ('fullName' in request.resource.data && request.resource.data.fullName is string && request.resource.data.fullName.size() > 0 && request.resource.data.fullName.size() <= 100)
+                      )
+                      && (!('phone' in request.resource.data) || (request.resource.data.phone is string && request.resource.data.phone.size() <= 30))
+                      && (!('email' in request.resource.data) || (request.resource.data.email is string && request.resource.data.email.size() <= 100))
+                      && (!('age' in request.resource.data) || (request.resource.data.age is string && request.resource.data.age.size() <= 20) || (request.resource.data.age is number && request.resource.data.age >= 0 && request.resource.data.age <= 120))
+                      && (!('interest' in request.resource.data) || (request.resource.data.interest is string && request.resource.data.interest.size() <= 200))
+                      && (!('availability' in request.resource.data) || (request.resource.data.availability is string && request.resource.data.availability.size() <= 100))
+                      && (!('message' in request.resource.data) || (request.resource.data.message is string && request.resource.data.message.size() <= 1000))
+                    );
+    }
+
+    // General Inquiries, Seva Callback Requests, and Event RSVPs
+    match /enquiries/{enquiryId} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+                      request.resource.data.keys().hasOnly([
+                        'name', 'phone', 'email', 'subject', 'message',
+                        'type', 'eventId', 'attendees', 'status', 'createdAt'
+                      ])
+                      && request.resource.data.status == 'pending'
+                      && request.resource.data.name is string
+                      && request.resource.data.name.size() > 0
+                      && request.resource.data.name.size() <= 100
+                      && (!('phone' in request.resource.data) || (request.resource.data.phone is string && request.resource.data.phone.size() <= 30))
+                      && (!('email' in request.resource.data) || (request.resource.data.email is string && request.resource.data.email.size() <= 100))
+                      && (!('subject' in request.resource.data) || (request.resource.data.subject is string && request.resource.data.subject.size() <= 200))
+                      && (!('message' in request.resource.data) || (request.resource.data.message is string && request.resource.data.message.size() <= 1000))
+                      && (!('type' in request.resource.data) || (request.resource.data.type is string && request.resource.data.type.size() <= 50))
+                      && (!('eventId' in request.resource.data) || (request.resource.data.eventId is string && request.resource.data.eventId.size() <= 100))
+                      && (!('attendees' in request.resource.data) || (request.resource.data.attendees is number && request.resource.data.attendees > 0 && request.resource.data.attendees <= 100) || (request.resource.data.attendees is string && request.resource.data.attendees.size() <= 10))
+                    );
+    }
+
+    // Backward-compatibility: alternative spelling for inquiries
+    match /inquiries/{inquiryId} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+                      request.resource.data.keys().hasOnly([
+                        'name', 'phone', 'email', 'subject', 'message',
+                        'type', 'eventId', 'attendees', 'status', 'createdAt'
+                      ])
+                      && request.resource.data.status == 'pending'
+                      && request.resource.data.name is string
+                      && request.resource.data.name.size() > 0
+                      && request.resource.data.name.size() <= 100
+                      && (!('phone' in request.resource.data) || (request.resource.data.phone is string && request.resource.data.phone.size() <= 30))
+                      && (!('email' in request.resource.data) || (request.resource.data.email is string && request.resource.data.email.size() <= 100))
+                      && (!('subject' in request.resource.data) || (request.resource.data.subject is string && request.resource.data.subject.size() <= 200))
+                      && (!('message' in request.resource.data) || (request.resource.data.message is string && request.resource.data.message.size() <= 1000))
+                      && (!('type' in request.resource.data) || (request.resource.data.type is string && request.resource.data.type.size() <= 50))
+                      && (!('eventId' in request.resource.data) || (request.resource.data.eventId is string && request.resource.data.eventId.size() <= 100))
+                      && (!('attendees' in request.resource.data) || (request.resource.data.attendees is number && request.resource.data.attendees > 0 && request.resource.data.attendees <= 100) || (request.resource.data.attendees is string && request.resource.data.attendees.size() <= 10))
+                    );
+    }
+
+    // Direct Event RSVPs & Registrations Collection
+    match /registrations/{regId} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+                      request.resource.data.keys().hasOnly([
+                        'id', 'name', 'phone', 'email', 'eventId',
+                        'attendees', 'status', 'createdAt',
+                        'subject', 'message', 'type'
+                      ])
+                      && request.resource.data.status == 'pending'
+                      && request.resource.data.name is string
+                      && request.resource.data.name.size() > 0
+                      && request.resource.data.name.size() <= 100
+                      && (!('phone' in request.resource.data) || (request.resource.data.phone is string && request.resource.data.phone.size() <= 30))
+                      && (!('email' in request.resource.data) || (request.resource.data.email is string && request.resource.data.email.size() <= 100))
+                      && (!('eventId' in request.resource.data) || (request.resource.data.eventId is string && request.resource.data.eventId.size() <= 100))
+                      && (!('attendees' in request.resource.data) || (request.resource.data.attendees is number && request.resource.data.attendees > 0 && request.resource.data.attendees <= 100) || (request.resource.data.attendees is string && request.resource.data.attendees.size() <= 10))
+                      && (!('id' in request.resource.data) || (request.resource.data.id is string && request.resource.data.id.size() <= 100))
+                      && (!('subject' in request.resource.data) || (request.resource.data.subject is string && request.resource.data.subject.size() <= 200))
+                      && (!('message' in request.resource.data) || (request.resource.data.message is string && request.resource.data.message.size() <= 1000))
+                      && (!('type' in request.resource.data) || (request.resource.data.type is string && request.resource.data.type.size() <= 50))
+                    );
+    }
+
+    // Course Inquiries & Youth Program Admissions
+    match /courseInquiries/{inqId} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+                      request.resource.data.keys().hasOnly([
+                        'id', 'name', 'phone', 'email', 'courseId',
+                        'courseTitle', 'subject', 'message', 'status', 'createdAt'
+                      ])
+                      && request.resource.data.status == 'pending'
+                      && request.resource.data.name is string
+                      && request.resource.data.name.size() > 0
+                      && request.resource.data.name.size() <= 100
+                      && (!('phone' in request.resource.data) || (request.resource.data.phone is string && request.resource.data.phone.size() <= 30))
+                      && (!('email' in request.resource.data) || (request.resource.data.email is string && request.resource.data.email.size() <= 100))
+                      && (!('message' in request.resource.data) || (request.resource.data.message is string && request.resource.data.message.size() <= 1000))
+                      && (!('id' in request.resource.data) || (request.resource.data.id is string && request.resource.data.id.size() <= 100))
+                      && (!('courseId' in request.resource.data) || (request.resource.data.courseId is string && request.resource.data.courseId.size() <= 100))
+                      && (!('courseTitle' in request.resource.data) || (request.resource.data.courseTitle is string && request.resource.data.courseTitle.size() <= 200))
+                      && (!('subject' in request.resource.data) || (request.resource.data.subject is string && request.resource.data.subject.size() <= 200))
+                    );
+    }
+
+    // =========================================================================
+    // 3. ADMIN PRIVILEGES & AUTHORIZATION
+    // Managed exclusively from the Firebase Console.
+    // Client write is disabled. Authenticated admins can only get their own document
+    // to verify access during login. Listing all admins is completely blocked.
+    // =========================================================================
+    match /admins/{adminId} {
+      allow get: if request.auth != null && request.auth.uid == adminId;
+      allow list, write: if false;
+    }
+
+    // =========================================================================
+    // 4. DENY ALL OTHER UNLISTED COLLECTIONS AND DOCUMENT PATHS
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

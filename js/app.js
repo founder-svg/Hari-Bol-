@@ -6,6 +6,116 @@
 (function() {
   'use strict';
 
+  // Ensure window.app exists immediately
+  window.app = window.app || {};
+
+  // Security Helper: Escape dynamic strings to prevent XSS
+  function escapeHTML(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Synchronous safety shim: Ensure window.templeStore is always defined
+  if (!window.templeStore) {
+    window.templeStore = {
+      getSchedule: () => window.TEMPLE_DATA?.schedule || [],
+      getTodayDarshan: () => (window.TEMPLE_DATA?.darshanGallery && window.TEMPLE_DATA.darshanGallery[0]) || null,
+      getEvents: () => window.TEMPLE_DATA?.events || [],
+      getSevas: () => window.TEMPLE_DATA?.sevaCategories || [],
+      getDarshan: () => window.TEMPLE_DATA?.darshanGallery || [],
+      getEventById: (id) => (window.TEMPLE_DATA?.events || []).find(e => e.id === id) || null,
+      getDonationById: () => null,
+      getDonations: () => [],
+      recordDonation: async (d) => ({ ...d, id: `DON-${Date.now()}` }),
+      submitInquiry: async (i) => ({ ...i, id: `INQ-${Date.now()}` }),
+      registerForEvent: async (r) => ({ ...r, id: `REG-${Date.now()}` }),
+      submitVolunteer: async (v) => ({ ...v, id: `VOL-${Date.now()}` })
+    };
+  }
+
+  // Inline Navigation & Drawer Action Handlers
+  window.app.onBrahmaSamhitaNavClick = function(event) {
+    if (event && event.preventDefault) {
+      event.preventDefault();
+    }
+    closeMobileDrawer();
+    if (window.location.hash === '#/brahma-samhita') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (typeof handleRouting === 'function') handleRouting();
+    } else {
+      window.location.hash = '#/brahma-samhita';
+    }
+  };
+
+  window.app.closeCourseSelectionDrawer = function() {
+    const overlay = document.getElementById('course-drawer-overlay');
+    if (overlay) overlay.classList.remove('open');
+  };
+
+  window.app.openCourseSelectionDrawer = function() {
+    const overlay = document.getElementById('course-drawer-overlay');
+    const body = document.getElementById('course-drawer-body');
+    if (body) {
+      const courses = window.TEMPLE_DATA?.coursesCatalog || [];
+      body.innerHTML = courses.map(c => `
+        <div class="card" style="padding: 16px; margin-bottom: 12px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+          <div>
+            <h4 style="margin: 0 0 4px 0; color: var(--maroon-900); font-family: var(--font-serif);">${escapeHTML(c.title)}</h4>
+            <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted);">${escapeHTML(c.subTitle || c.description || '')}</p>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="window.app.closeCourseSelectionDrawer(); window.app.openCheckout('Course Registration: ${escapeHTML(c.title)}', 501)">Select</button>
+        </div>
+      `).join('');
+    }
+    if (overlay) overlay.classList.add('open');
+  };
+
+  window.app.closeVolunteerSevaDrawer = function() {
+    const overlay = document.getElementById('volunteer-drawer-overlay');
+    if (overlay) overlay.classList.remove('open');
+  };
+
+  window.app.openVolunteerSevaDrawer = function() {
+    const overlay = document.getElementById('volunteer-drawer-overlay');
+    const body = document.getElementById('volunteer-drawer-body');
+    if (body) {
+      const sevas = window.TEMPLE_DATA?.volunteerSevaOptions || [];
+      body.innerHTML = sevas.map(s => `
+        <label class="card" style="padding: 14px 16px; margin-bottom: 10px; border: 1.5px solid var(--border-color); display: flex; align-items: center; gap: 14px; cursor: pointer;">
+          <input type="checkbox" value="${escapeHTML(s.title)}" style="width: 20px; height: 20px; accent-color: var(--saffron-600);">
+          <div>
+            <strong style="color: var(--maroon-900);">${s.icon || '🤝'} ${escapeHTML(s.title)}</strong>
+            <p style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">${escapeHTML(s.description || '')}</p>
+          </div>
+        </label>
+      `).join('');
+    }
+    if (overlay) overlay.classList.add('open');
+  };
+
+  window.app.confirmVolunteerSevaSelection = function() {
+    const checkboxes = document.querySelectorAll('#volunteer-drawer-body input[type="checkbox"]:checked');
+    const selected = Array.from(checkboxes).map(cb => cb.value);
+    if (selected.length > 0) {
+      const interestSelect = document.querySelector('#volunteer-form select[name="interest"]');
+      if (interestSelect) {
+        let opt = Array.from(interestSelect.options).find(o => o.value === selected[0]);
+        if (!opt) {
+          opt = new Option(selected.join(', '), selected.join(', '));
+          interestSelect.add(opt);
+        }
+        interestSelect.value = opt.value;
+      }
+      showToast(`Selected Seva: ${selected.join(', ')}`, "success");
+    }
+    window.app.closeVolunteerSevaDrawer();
+  };
+
   // Audio Engine State
   const audioState = {
     currentTrackIndex: 0,
@@ -17,8 +127,6 @@
     tracks: window.TEMPLE_DATA?.kirtans || []
   };
 
-  // Active Admin Auth State
-  let isAdminAuthenticated = false;
 
   // DOM Elements cache
   let mainContentElem = null;
@@ -51,6 +159,71 @@
     }
   }
 
+  // Sync Announcement Banner and YouTube Live Stream Bar safely
+  function syncHeaderBanners() {
+    // 1. Top Announcement Bar
+    try {
+      const ann = window.templeStore ? window.templeStore.getAnnouncement() : null;
+      const annBar = document.getElementById('top-announcement-bar');
+      const annSpan = document.getElementById('announcement-banner-text');
+
+      if (annBar && ann) {
+        if (ann.enabled === false) {
+          annBar.style.display = 'none';
+        } else {
+          annBar.style.display = '';
+          if (annSpan) {
+            annSpan.textContent = '';
+            const textNode = document.createTextNode((ann.text || '') + ' ');
+            annSpan.appendChild(textNode);
+
+            const linkEl = document.createElement('a');
+            linkEl.textContent = ann.linkText || 'View Details →';
+            let linkHref = ann.linkHash || ann.link || '#/events';
+            if (!linkHref.startsWith('#/') && !linkHref.startsWith('https://')) {
+              linkHref = '#/events';
+            }
+            linkEl.href = linkHref;
+            if (linkHref.startsWith('https://')) {
+              linkEl.target = '_blank';
+              linkEl.rel = 'noopener';
+            }
+            annSpan.appendChild(linkEl);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[App] Announcement banner sync error:', err);
+    }
+
+    // 2. YouTube Live Stream Banner
+    try {
+      const yt = window.templeStore ? window.templeStore.getYouTubeLive() : null;
+      const liveBar = document.getElementById('live-stream-bar');
+      const liveTitle = document.getElementById('live-stream-title-bar');
+      const liveBtn = liveBar ? liveBar.querySelector('.watch-live-btn') : null;
+
+      if (liveBar && yt && typeof yt.isLive === 'boolean') {
+        if (yt.isLive) {
+          liveBar.style.display = 'flex';
+          if (liveTitle && yt.title) {
+            liveTitle.textContent = yt.title;
+          }
+          if (liveBtn && yt.videoId) {
+            const vidUrl = yt.videoId.startsWith('http')
+              ? yt.videoId
+              : `https://www.youtube.com/watch?v=${encodeURIComponent(yt.videoId)}`;
+            liveBtn.href = vidUrl;
+          }
+        } else {
+          liveBar.style.display = 'none';
+        }
+      }
+    } catch (err) {
+      console.warn('[App] Live stream sync error:', err);
+    }
+  }
+
   // Initialize App
   function initApp() {
     mainContentElem = document.getElementById('app-main-content');
@@ -64,11 +237,21 @@
     window.addEventListener('hashchange', handleRouting);
     document.addEventListener('keydown', handleGlobalKeydown);
 
+    // Listen to real-time Firestore updates from TempleStore
+    window.addEventListener('temple-data-updated', () => {
+      syncHeaderBanners();
+      const modalOpen = document.querySelector('.sacred-modal.open');
+      if (!modalOpen) {
+        handleRouting();
+      }
+    });
+
     setupGlobalUiEvents();
     setupAudioPlayer();
     startLiveAartiTimer();
     setupPeacockFeacockSplash();
     setupScrollRevealEngine();
+    syncHeaderBanners();
 
     // Initial Route
     handleRouting();
@@ -214,6 +397,9 @@
     // Close any open mobile drawer
     closeMobileDrawer();
 
+    // Sync Announcement and Live Stream headers
+    syncHeaderBanners();
+
     // Update active nav states
     updateActiveNavLinks(cleanHash);
 
@@ -291,8 +477,6 @@
       renderMediaView(params);
     } else if (cleanHash === '#/contact') {
       renderContactView();
-    } else if (cleanHash === '#/admin') {
-      window.location.href = 'admin/index.html';
     } else {
       render404View();
     }
@@ -393,11 +577,16 @@
 
   // 1. HOME VIEW
   function renderHomeView() {
-    const data = window.TEMPLE_DATA;
-    const todayDarshan = window.templeStore.getTodayDarshan() || data.darshanGallery[0];
-    const events = window.templeStore.getEvents().slice(0, 3);
-    const schedule = window.templeStore.getSchedule();
-    const sevas = window.templeStore.getSevas().slice(0, 3);
+    const data = window.TEMPLE_DATA || {};
+    const storeDarshan = window.templeStore ? window.templeStore.getDarshan() : [];
+    const gallery = (Array.isArray(storeDarshan) && storeDarshan.length > 0)
+      ? storeDarshan
+      : (data.darshanGallery || []);
+    const todayDarshan = (window.templeStore && window.templeStore.getTodayDarshan()) || gallery[0] || {};
+    const todayDarshanImg = todayDarshan.image || todayDarshan.imageUrl || 'assets/images/darshan_today.jpg';
+    const events = (window.templeStore ? window.templeStore.getEvents() : (data.events || [])).slice(0, 3);
+    const schedule = (window.templeStore ? window.templeStore.getSchedule() : (data.schedule || []));
+    const sevas = (window.templeStore ? window.templeStore.getSevas() : (data.sevaCategories || [])).slice(0, 3);
     const gitaKey = (data.bhagavadGita?.chapters?.[1]?.verses?.[0]) || (data.bhagavadGita?.chapters?.[1]?.keyVerse) || {
       number: "2.20",
       sanskrit: "न जायते म्रियते वा कदाचिन्\nनायं भूत्वा भविता वा न भूयः |\nअजो नित्यः शाश्वतोऽयं पुराणो\nन हन्यते हन्यमाने शरीरे || २-२० ||",
@@ -456,8 +645,8 @@
       <!-- TODAY'S DARSHAN SPOTLIGHT -->
       <section class="main-container">
         <div class="darshan-spotlight-card" style="border: 2px solid var(--gold-400); box-shadow: 0 16px 40px rgba(62,8,18,0.12); border-radius: 24px; overflow: hidden;">
-          <div class="darshan-image-container" style="position: relative; cursor: pointer;" onclick="window.app.openLightbox('${todayDarshan.image || todayDarshan.imageUrl}', '${todayDarshan.title}')">
-            <img src="${todayDarshan.image || todayDarshan.imageUrl}" alt="${todayDarshan.title}">
+          <div class="darshan-image-container" style="position: relative; cursor: pointer;" onclick="window.app.openLightbox('${todayDarshanImg}', '${todayDarshan.title || 'Sacred Darshan'}')">
+            <img src="${todayDarshanImg}" alt="${todayDarshan.title || 'Sacred Darshan'}">
             <div class="darshan-overlay-badge" style="background: rgba(62,8,18,0.85); border: 1px solid var(--gold-500); backdrop-filter: blur(4px);">
               <span>✨</span> ${todayDarshan.tag || "Today's Sacred Darshan"}
             </div>
@@ -614,23 +803,26 @@
           </div>
 
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 28px;">
-            ${events.map(evt => `
+            ${events.map(evt => {
+              const evtImg = evt.image || evt.imageUrl || 'assets/images/darshan_today.jpg';
+              const evtDesc = evt.shortDesc || evt.description || evt.fullDesc || '';
+              return `
               <div class="card" style="display: flex; flex-direction: column;">
                 <div style="height: 220px; position: relative; background: #222; overflow: hidden;">
-                  <img src="${evt.image}" alt="${evt.title}" style="width: 100%; height: 100%; object-fit: cover; object-position: center 10%;">
+                  <img src="${evtImg}" alt="${evt.title || 'Temple Event'}" style="width: 100%; height: 100%; object-fit: cover; object-position: center 10%;">
                   <span style="position: absolute; top: 12px; left: 12px; background: rgba(62, 8, 18, 0.85); color: #FFF9E6; padding: 4px 10px; border-radius: var(--radius-full); font-size: 0.75rem; font-weight: 700; border: 1px solid var(--gold-500);">
-                    ${evt.category}
+                    ${evt.category || 'Festival'}
                   </span>
                 </div>
                 <div style="padding: 24px; display: flex; flex-direction: column; flex: 1;">
                   <div style="color: var(--saffron-800); font-weight: 700; font-size: 0.85rem; margin-bottom: 6px;">
-                    📅 ${evt.date} • ⏰ ${evt.time}
+                    📅 ${evt.date || ''} • ⏰ ${evt.time || ''}
                   </div>
                   <h3 style="font-family: var(--font-serif); font-size: 1.3rem; color: var(--maroon-900); margin-bottom: 10px;">
-                    ${evt.title}
+                    ${evt.title || ''}
                   </h3>
                   <p style="color: var(--text-muted); font-size: 0.92rem; line-height: 1.5; margin-bottom: 18px; flex: 1;">
-                    ${evt.shortDesc}
+                    ${evtDesc}
                   </p>
                   <div style="display: flex; gap: 10px; align-items: center; justify-content: space-between;">
                     <a href="#/events/${evt.id}" class="btn btn-primary btn-sm">
@@ -642,7 +834,7 @@
                   </div>
                 </div>
               </div>
-            `).join('')}
+            `}).join('')}
           </div>
 
           <div style="text-align: center; margin-top: 36px;">
@@ -860,9 +1052,24 @@
 
   // 2. DARSHAN VIEW
   function renderDarshanView() {
-    const gallery = window.TEMPLE_DATA?.darshanGallery || window.templeStore.getDarshan();
-    const today = gallery[0];
-    const schedule = window.templeStore.getSchedule();
+    const storeDarshan = window.templeStore ? window.templeStore.getDarshan() : [];
+    const gallery = (Array.isArray(storeDarshan) && storeDarshan.length > 0)
+      ? storeDarshan
+      : (window.TEMPLE_DATA?.darshanGallery || []);
+    const today = (window.templeStore && window.templeStore.getTodayDarshan()) || gallery[0] || {};
+    const todayImage = today.image || today.imageUrl || 'assets/images/darshan_today.jpg';
+    const schedule = (window.templeStore && window.templeStore.getSchedule()) || (window.TEMPLE_DATA?.schedule || []);
+
+    if (!today.title && gallery.length === 0) {
+      mainContentElem.innerHTML = `
+        <div class="main-container section-padding" style="text-align: center; padding: 100px 20px;">
+          <h2 style="font-family: var(--font-serif); color: var(--maroon-900); font-size: 2rem;">Today's Divine Darshan</h2>
+          <p style="color: var(--text-muted); margin-top: 12px; font-size: 1.05rem;">Darshan photos are being updated by temple servitors. Please check back shortly.</p>
+          <a href="#/" class="btn btn-primary" style="margin-top: 24px;">Return to Home</a>
+        </div>
+      `;
+      return;
+    }
 
     mainContentElem.innerHTML = `
       <div style="position: relative; background: linear-gradient(135deg, rgba(40, 4, 10, 0.58) 0%, rgba(15, 2, 5, 0.65) 100%), url('assets/images/gallery/temple_photo_01.jpg') center/cover no-repeat; color: #FFF; padding: 75px 0 65px 0; border-bottom: 2px solid var(--gold-500); overflow: hidden;">
@@ -881,28 +1088,28 @@
         <div class="card" style="margin-bottom: 48px; border: 2px solid var(--gold-500); overflow: hidden;">
           <div class="darshan-featured-card-grid">
             <div style="position: relative; min-height: 520px; max-height: 640px; padding: 20px; background: radial-gradient(circle, #22040A 0%, #0A0103 100%); overflow: hidden; display: flex; align-items: center; justify-content: center;">
-              <img src="${today.image}" alt="${today.title}" style="max-height: 540px; width: 100%; object-fit: contain; display: block; margin: 0 auto;">
-              <button onclick="window.app.openLightbox('${today.image}', '${today.title}')" class="btn btn-gold btn-sm" style="position: absolute; bottom: 16px; right: 16px;">
+              <img src="${todayImage}" alt="${today.title || 'Sacred Darshan'}" style="max-height: 540px; width: 100%; object-fit: contain; display: block; margin: 0 auto;">
+              <button onclick="window.app.openLightbox('${todayImage}', '${today.title || 'Sacred Darshan'}')" class="btn btn-gold btn-sm" style="position: absolute; bottom: 16px; right: 16px;">
                 <span>🔍</span> Zoom Fullscreen
               </button>
             </div>
             <div style="padding: 36px; display: flex; flex-direction: column; justify-content: center; background: var(--bg-card);">
-              <span class="sacred-badge maroon" style="margin-bottom: 8px;">${today.date}</span>
+              <span class="sacred-badge maroon" style="margin-bottom: 8px;">${today.date || ''}</span>
               <h2 style="font-family: var(--font-serif); font-size: 2rem; color: var(--maroon-900); margin-bottom: 12px;">
-                ${today.title}
+                ${today.title || ''}
               </h2>
               <p style="color: var(--text-muted); font-size: 1rem; line-height: 1.7; margin-bottom: 20px;">
-                ${today.message}
+                ${today.message || today.quote || ''}
               </p>
               <div style="background: var(--saffron-50); border-left: 4px solid var(--saffron-800); padding: 14px; border-radius: var(--radius-sm); margin-bottom: 24px;">
                 <strong style="color: var(--maroon-900); display: block; font-size: 0.9rem;">Deity Attire & Shringar:</strong>
-                <span style="font-size: 0.92rem; color: var(--text-main);">${today.attire}</span>
+                <span style="font-size: 0.92rem; color: var(--text-main);">${today.attire || today.alankara || ''}</span>
               </div>
               <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                <button onclick="window.app.downloadImage('${today.image}', 'Darshan-${today.date}.jpg')" class="btn btn-primary">
+                <button onclick="window.app.downloadImage('${todayImage}', 'Darshan-${today.date || 'today'}.jpg')" class="btn btn-primary">
                   <span>⬇️</span> Download Photo
                 </button>
-                <button onclick="window.app.shareDarshanWhatsApp('${today.title}', '${today.date}')" class="btn btn-secondary">
+                <button onclick="window.app.shareDarshanWhatsApp('${today.title || ''}', '${today.date || ''}')" class="btn btn-secondary">
                   <span>💬</span> WhatsApp Status
                 </button>
                 <button onclick="window.app.openCheckout('Deity Shringar & Royal Poshak Seva', 2501)" class="btn btn-gold">
@@ -921,25 +1128,27 @@
         </div>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 28px; margin-bottom: 64px;">
-          ${gallery.map(item => `
+          ${gallery.map(item => {
+            const itemImage = item.image || item.imageUrl || 'assets/images/darshan_today.jpg';
+            return `
             <div class="card" style="overflow: hidden;">
               <div class="card-media-portrait ${item.id && (item.id.includes('face') || item.id.includes('radharani')) ? '' : 'contain'}">
-                <img src="${item.image}" alt="${item.title}" class="${item.id && (item.id.includes('face') || item.id.includes('radharani')) ? 'idol-img-top' : 'idol-img-contain'}">
+                <img src="${itemImage}" alt="${item.title || 'Deity Darshan'}" class="${item.id && (item.id.includes('face') || item.id.includes('radharani')) ? 'idol-img-top' : 'idol-img-contain'}">
                 <span style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.75); color: #FFF; padding: 4px 10px; border-radius: var(--radius-full); font-size: 0.75rem; border: 1px solid var(--gold-500); backdrop-filter: blur(4px);">
-                  📅 ${item.date}
+                  📅 ${item.date || ''}
                 </span>
               </div>
               <div style="padding: 20px;">
                 <h3 style="font-family: var(--font-serif); font-size: 1.15rem; color: var(--maroon-900); margin-bottom: 6px;">
-                  ${item.title}
+                  ${item.title || ''}
                 </h3>
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">${item.deity}</p>
-                <button onclick="window.app.openLightbox('${item.image}', '${item.title} (${item.date})')" class="btn btn-sm btn-secondary" style="width: 100%;">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">${item.deity || ''}</p>
+                <button onclick="window.app.openLightbox('${itemImage}', '${item.title || ''} (${item.date || ''})')" class="btn btn-sm btn-secondary" style="width: 100%;">
                   <span>🔍</span> View High Resolution
                 </button>
               </div>
             </div>
-          `).join('')}
+          `}).join('')}
         </div>
 
         <!-- Aarti Schedule Table -->
@@ -1004,28 +1213,31 @@
         </div>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 32px;">
-          ${filteredEvents.map(evt => `
+          ${filteredEvents.map(evt => {
+            const evtImg = evt.image || evt.imageUrl || 'assets/images/darshan_today.jpg';
+            const evtDesc = evt.shortDesc || evt.description || evt.fullDesc || '';
+            return `
             <div class="card" style="display: flex; flex-direction: column;">
               <div style="height: 240px; position: relative; background: #222;">
-                <img src="${evt.image}" alt="${evt.title}" style="width: 100%; height: 100%; object-fit: cover;">
+                <img src="${evtImg}" alt="${evt.title || 'Temple Event'}" style="width: 100%; height: 100%; object-fit: cover;">
                 <span class="sacred-badge maroon" style="position: absolute; top: 12px; left: 12px;">
-                  ${evt.category}
+                  ${evt.category || 'Festival'}
                 </span>
                 ${evt.freeEntry ? '<span class="sacred-badge gold" style="position: absolute; top: 12px; right: 12px;">Free Entry</span>' : ''}
               </div>
               <div style="padding: 28px; display: flex; flex-direction: column; flex: 1;">
                 <div style="color: var(--saffron-800); font-weight: 700; font-size: 0.88rem; margin-bottom: 8px;">
-                  📅 ${evt.date} • ⏰ ${evt.time}
+                  📅 ${evt.date || ''} • ⏰ ${evt.time || ''}
                 </div>
                 <h3 style="font-family: var(--font-serif); font-size: 1.35rem; color: var(--maroon-900); margin-bottom: 12px;">
-                  ${evt.title}
+                  ${evt.title || ''}
                 </h3>
                 <p style="color: var(--text-muted); font-size: 0.92rem; line-height: 1.6; margin-bottom: 20px; flex: 1;">
-                  ${evt.shortDesc}
+                  ${evtDesc}
                 </p>
 
                 <div style="background: var(--bg-subtle); padding: 12px; border-radius: var(--radius-sm); margin-bottom: 20px; font-size: 0.85rem;">
-                  📍 <strong>Venue:</strong> ${evt.location}
+                  📍 <strong>Venue:</strong> ${evt.location || 'Temple Sanctuary'}
                 </div>
 
                 <div style="display: flex; gap: 12px; justify-content: space-between; align-items: center;">
@@ -1038,7 +1250,7 @@
                 </div>
               </div>
             </div>
-          `).join('')}
+          `}).join('')}
         </div>
       </div>
     `;
@@ -1057,14 +1269,17 @@
       return;
     }
 
+    const detailImg = evt.image || evt.imageUrl || 'assets/images/darshan_today.jpg';
+    const detailDesc = evt.fullDesc || evt.description || evt.shortDesc || '';
+
     mainContentElem.innerHTML = `
       <div style="background: linear-gradient(135deg, var(--maroon-900) 0%, #20040A 100%); color: #FFF; padding: 60px 0;">
         <div class="main-container">
           <a href="#/events" style="color: var(--gold-300); font-weight: 600; font-size: 0.9rem;">← Back to All Events</a>
-          <span class="sacred-badge gold" style="display: block; width: fit-content; margin-top: 16px;">${evt.category}</span>
-          <h1 style="font-family: var(--font-serif); font-size: 2.8rem; margin: 12px 0; color: #FFFDF9;">${evt.title}</h1>
+          <span class="sacred-badge gold" style="display: block; width: fit-content; margin-top: 16px;">${evt.category || 'Festival'}</span>
+          <h1 style="font-family: var(--font-serif); font-size: 2.8rem; margin: 12px 0; color: #FFFDF9;">${evt.title || ''}</h1>
           <div style="color: #FFE082; font-size: 1.1rem;">
-            📅 <strong>Date:</strong> ${evt.date} | ⏰ <strong>Time:</strong> ${evt.time}
+            📅 <strong>Date:</strong> ${evt.date || ''} | ⏰ <strong>Time:</strong> ${evt.time || ''}
           </div>
         </div>
       </div>
@@ -1072,11 +1287,11 @@
       <div class="main-container section-padding">
         <div style="display: grid; grid-template-columns: 1fr; @media(min-width:900px){grid-template-columns: 2fr 1fr;} gap: 40px;">
           <div>
-            <img src="${evt.image}" alt="${evt.title}" style="width: 100%; height: 400px; object-fit: cover; border-radius: var(--radius-lg); margin-bottom: 32px; border: 2px solid var(--border-color);">
+            <img src="${detailImg}" alt="${evt.title || 'Event'}" style="width: 100%; height: 400px; object-fit: cover; border-radius: var(--radius-lg); margin-bottom: 32px; border: 2px solid var(--border-color);">
 
             <h2 style="font-family: var(--font-serif); font-size: 1.8rem; color: var(--maroon-900); margin-bottom: 16px;">About This Festival</h2>
             <p style="color: var(--text-main); font-size: 1.05rem; line-height: 1.8; margin-bottom: 28px;">
-              ${evt.fullDesc || evt.shortDesc}
+              ${detailDesc}
             </p>
 
             ${evt.highlights && evt.highlights.length > 0 ? `
@@ -1647,7 +1862,10 @@ tvat-kṛpāpekṣako nityam ity
 
   // 8. KIRTANS VIEW
   function renderKirtansView() {
-    const kirtans = window.TEMPLE_DATA.kirtans;
+    const storeAudio = window.templeStore ? window.templeStore.getMediaAudio() : [];
+    const kirtans = (Array.isArray(storeAudio) && storeAudio.length > 0)
+      ? storeAudio
+      : (window.TEMPLE_DATA?.kirtans || []);
     mainContentElem.innerHTML = `
       <div style="position: relative; background: linear-gradient(135deg, rgba(40, 4, 10, 0.58) 0%, rgba(15, 2, 5, 0.65) 100%), url('assets/images/gallery/temple_photo_15.jpg') center/cover no-repeat; color: #FFF; padding: 75px 0 65px 0; border-bottom: 2px solid var(--gold-500); overflow: hidden;">
         <div style="position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 35%, rgba(10, 1, 3, 0.50) 100%); pointer-events: none;"></div>
@@ -1725,29 +1943,40 @@ tvat-kṛpāpekṣako nityam ity
 
   // 9. ARTICLES & WISDOM VIEW
   function renderArticlesView(params) {
-    const articles = window.TEMPLE_DATA.articles;
+    const storeQuotes = window.templeStore ? window.templeStore.getQuotes() : [];
+    const articles = (Array.isArray(storeQuotes) && storeQuotes.length > 0)
+      ? storeQuotes
+      : (window.TEMPLE_DATA?.articles || []);
     const selectedArticleId = params.get('id');
 
     if (selectedArticleId) {
-      const art = articles.find(a => a.id === selectedArticleId) || articles[0];
+      const art = articles.find(a => a.id === selectedArticleId) || articles[0] || {};
+      const artTitle = art.title || (art.text ? art.text.slice(0, 60) + '...' : 'Wisdom Quote');
+      const artImg = art.image || art.imageUrl || 'assets/images/srila_prabhupada.jpg';
+      const artContent = art.content || art.text || '';
+      const artAuthor = art.author || 'Srila Prabhupada';
+      const artCategory = art.category || 'Vedic Wisdom';
+      const artDate = art.date || '';
+      const artReadTime = art.readTime || '3 min read';
+
       mainContentElem.innerHTML = `
         <div style="position: relative; background: linear-gradient(135deg, rgba(40, 4, 10, 0.58) 0%, rgba(15, 2, 5, 0.65) 100%), url('assets/images/gallery/temple_photo_09.jpg') center/cover no-repeat; color: #FFF; padding: 75px 0 65px 0; border-bottom: 2px solid var(--gold-500); overflow: hidden;">
         <div style="position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 35%, rgba(10, 1, 3, 0.50) 100%); pointer-events: none;"></div>
           <div class="main-container" style="position: relative; z-index: 2; text-align: center;">
             <a href="#/articles" style="color: var(--gold-300); font-weight: 600; font-size: 0.9rem;">← Back to All Articles</a>
-            <span class="sacred-badge gold" style="display: block; width: fit-content; margin-top: 16px;">${art.category}</span>
-            <h1 style="font-family: var(--font-serif); font-size: 2.6rem; margin: 12px 0; color: #FFFDF9;">${art.title}</h1>
+            <span class="sacred-badge gold" style="display: block; width: fit-content; margin-top: 16px;">${artCategory}</span>
+            <h1 style="font-family: var(--font-serif); font-size: 2.6rem; margin: 12px 0; color: #FFFDF9;">${artTitle}</h1>
             <div style="color: #FFE082; font-size: 0.95rem;">
-              ✍️ By ${art.author} • 📅 ${art.date} • ⏱️ ${art.readTime}
+              ✍️ By ${artAuthor} • 📅 ${artDate} • ⏱️ ${artReadTime}
             </div>
           </div>
         </div>
 
         <div class="main-container section-padding" style="max-width: 860px;">
-          <img src="${art.image}" alt="${art.title}" style="width: 100%; height: 380px; object-fit: cover; border-radius: var(--radius-lg); margin-bottom: 32px; border: 1px solid var(--border-color);">
+          <img src="${artImg}" alt="${artTitle}" style="width: 100%; height: 380px; object-fit: cover; border-radius: var(--radius-lg); margin-bottom: 32px; border: 1px solid var(--border-color);">
 
           <div style="font-size: 1.1rem; line-height: 1.9; color: var(--text-main); white-space: pre-line;">
-            ${art.content}
+            ${artContent}
           </div>
 
           <div class="sacred-divider"><span>🪷</span></div>
@@ -1776,30 +2005,37 @@ tvat-kṛpāpekṣako nityam ity
 
       <div class="main-container section-padding">
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 32px;">
-          ${articles.map(art => `
+          ${articles.map(art => {
+            const artTitle = art.title || (art.text ? art.text.slice(0, 60) + '...' : 'Wisdom Quote');
+            const artImg = art.image || art.imageUrl || 'assets/images/srila_prabhupada.jpg';
+            const artDesc = art.excerpt || art.text || art.content || '';
+            const artDate = art.date || '';
+            const artReadTime = art.readTime || '3 min read';
+            const artCategory = art.category || 'Vedic Wisdom';
+            return `
             <div class="card" style="display: flex; flex-direction: column;">
               <div style="height: 220px; position: relative; background: #222;">
-                <img src="${art.image}" alt="${art.title}" style="width: 100%; height: 100%; object-fit: cover;">
+                <img src="${artImg}" alt="${artTitle}" style="width: 100%; height: 100%; object-fit: cover;">
                 <span class="sacred-badge maroon" style="position: absolute; top: 12px; left: 12px;">
-                  ${art.category}
+                  ${artCategory}
                 </span>
               </div>
               <div style="padding: 24px; display: flex; flex-direction: column; flex: 1;">
                 <div style="color: var(--text-muted); font-size: 0.82rem; margin-bottom: 8px;">
-                  📅 ${art.date} • ⏱️ ${art.readTime}
+                  📅 ${artDate} • ⏱️ ${artReadTime}
                 </div>
                 <h3 style="font-family: var(--font-serif); font-size: 1.3rem; color: var(--maroon-900); margin-bottom: 12px;">
-                  ${art.title}
+                  ${artTitle}
                 </h3>
                 <p style="color: var(--text-muted); font-size: 0.92rem; line-height: 1.6; margin-bottom: 20px; flex: 1;">
-                  ${art.excerpt}
+                  ${artDesc}
                 </p>
                 <a href="#/articles?id=${art.id}" class="btn btn-primary">
                   Read Full Article →
                 </a>
               </div>
             </div>
-          `).join('')}
+          `}).join('')}
         </div>
       </div>
     `;
@@ -2317,7 +2553,7 @@ tvat-kṛpāpekṣako nityam ity
                 <input type="email" name="email" class="form-input" required placeholder="To receive 80G receipt">
               </div>
               <div class="form-group">
-                <label class="form-label">PAN Number (For 80G Tax Exemption)</label>
+                <label class="form-label">PAN Number (Optional — required only for 80G Tax Exemption Certificate)</label>
                 <input type="text" name="pan" class="form-input" maxlength="10" placeholder="ABCDE1234F" style="text-transform: uppercase;">
               </div>
             </div>
@@ -2396,16 +2632,16 @@ tvat-kṛpāpekṣako nityam ity
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; font-size: 0.95rem;">
             <div>
               <span style="color: var(--text-muted); display: block; font-size: 0.82rem;">DONOR DETAILS</span>
-              <strong>${donation.donorName}</strong><br>
-              ${donation.phone ? `Phone: ${donation.phone}<br>` : ''}
-              ${donation.email ? `Email: ${donation.email}<br>` : ''}
-              ${donation.pan ? `PAN: <strong style="color:var(--maroon-900);">${donation.pan}</strong><br>` : ''}
-              ${donation.address ? `Address: ${donation.address}` : ''}
+              <strong>${escapeHTML(donation.donorName)}</strong><br>
+              ${donation.phone ? `Phone: ${escapeHTML(donation.phone)}<br>` : ''}
+              ${donation.email ? `Email: ${escapeHTML(donation.email)}<br>` : ''}
+              ${donation.pan ? `PAN: <strong style="color:var(--maroon-900);">${escapeHTML(donation.pan)}</strong><br>` : ''}
+              ${donation.address ? `Address: ${escapeHTML(donation.address)}` : ''}
             </div>
             <div>
               <span style="color: var(--text-muted); display: block; font-size: 0.82rem;">PAYMENT DETAILS</span>
-              <strong>Txn ID:</strong> ${donation.transactionId}<br>
-              <strong>Mode:</strong> ${donation.paymentMethod}<br>
+              <strong>Txn ID:</strong> ${escapeHTML(donation.transactionId)}<br>
+              <strong>Mode:</strong> ${escapeHTML(donation.paymentMethod)}<br>
               <strong>Status:</strong> <span style="color:#2E7D32; font-weight:bold;">SUCCESS / VERIFIED</span>
             </div>
           </div>
@@ -2414,7 +2650,7 @@ tvat-kṛpāpekṣako nityam ity
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div>
                 <span style="font-size: 0.85rem; color: var(--text-muted); display: block;">SEVA PURPOSE</span>
-                <strong style="font-size: 1.1rem; color: var(--maroon-900);">${donation.purpose}</strong>
+                <strong style="font-size: 1.1rem; color: var(--maroon-900);">${escapeHTML(donation.purpose)}</strong>
               </div>
               <div style="text-align: right;">
                 <span style="font-size: 0.85rem; color: var(--text-muted); display: block;">DONATION AMOUNT</span>
@@ -2608,220 +2844,6 @@ tvat-kṛpāpekṣako nityam ity
     `;
   }
 
-  // 21. ADMIN CMS VIEW
-  function renderAdminView() {
-    if (!isAdminAuthenticated) {
-      mainContentElem.innerHTML = `
-        <div class="main-container section-padding" style="max-width: 500px;">
-          <div class="card" style="padding: 40px; text-align: center; border: 2px solid var(--gold-500);">
-            <div class="brand-emblem" style="margin: 0 auto 16px auto; width: 64px; height: 64px;">
-              <span>🔐</span>
-            </div>
-            <h2 style="font-family: var(--font-serif); font-size: 1.8rem; color: var(--maroon-900); margin-bottom: 8px;">
-              Temple Admin CMS
-            </h2>
-            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 24px;">
-              Authorized temple administrators only.
-            </p>
-
-            <form onsubmit="window.app.handleAdminLogin(event)">
-              <div class="form-group" style="text-align: left; margin-bottom: 16px;">
-                <label class="form-label">Admin ID / Username</label>
-                <input type="text" id="admin-username" class="form-input" required placeholder="e.g. iskcongim" value="iskcongim">
-              </div>
-              <div class="form-group" style="text-align: left; margin-bottom: 24px;">
-                <label class="form-label">Passcode / Password</label>
-                <input type="password" id="admin-passcode" class="form-input" required placeholder="Enter password" value="iskconrmm2023">
-              </div>
-              <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">
-                🔓 Authenticate & Access Admin Panel
-              </button>
-            </form>
-
-            <div style="margin-top: 20px; font-size: 0.82rem; color: var(--text-muted); background: var(--saffron-50); padding: 10px; border-radius: 8px;">
-              Official Admin Login:<br>
-              ID: <strong>iskcongim</strong> | Pass: <strong>iskconrmm2023</strong>
-            </div>
-          </div>
-        </div>
-      `;
-      return;
-    }
-
-    const donations = window.templeStore.getDonations();
-    const events = window.templeStore.getEvents();
-    const volunteers = window.templeStore.getVolunteers();
-    const inquiries = window.templeStore.getInquiries();
-    const todayDarshan = window.templeStore.getTodayDarshan() || window.TEMPLE_DATA.darshanGallery[0];
-    const announcement = window.templeStore.getAnnouncement();
-
-    const totalDonationsAmount = donations.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
-
-    mainContentElem.innerHTML = `
-      <div style="background: var(--maroon-900); color: #FFF; padding: 30px 0;">
-        <div class="main-container" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
-          <div>
-            <span class="sacred-badge gold">Content Management System</span>
-            <h1 style="font-family: var(--font-serif); font-size: 2rem; color: #FFFDF9; margin-top: 4px;">
-              Temple Administration Dashboard
-            </h1>
-          </div>
-          <div style="display: flex; gap: 12px;">
-            <button onclick="window.app.resetAdminData()" class="btn btn-secondary btn-sm" title="Reset all demo data to seeds">
-              🔄 Reset Demo Data
-            </button>
-            <button onclick="window.app.handleAdminLogout()" class="btn btn-maroon btn-sm">
-              🚪 Logout
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div class="main-container section-padding">
-        <!-- Dashboard Stats -->
-        <div class="admin-stats-grid">
-          <div class="admin-stat-card">
-            <span style="font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase;">Total Online Donations</span>
-            <div style="font-family: var(--font-serif); font-size: 1.8rem; color: var(--maroon-900); font-weight: 800; margin-top: 4px;">
-              ₹${totalDonationsAmount.toLocaleString()}
-            </div>
-            <span style="font-size: 0.75rem; color: #2E7D32;">${donations.length} transactions</span>
-          </div>
-
-          <div class="admin-stat-card">
-            <span style="font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase;">Active Festivals / Events</span>
-            <div style="font-family: var(--font-serif); font-size: 1.8rem; color: var(--saffron-900); font-weight: 800; margin-top: 4px;">
-              ${events.length}
-            </div>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Upcoming</span>
-          </div>
-
-          <div class="admin-stat-card">
-            <span style="font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase;">Volunteer Applications</span>
-            <div style="font-family: var(--font-serif); font-size: 1.8rem; color: var(--peacock-teal); font-weight: 800; margin-top: 4px;">
-              ${volunteers.length}
-            </div>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Pending Review</span>
-          </div>
-
-          <div class="admin-stat-card">
-            <span style="font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase;">Inquiries & Messages</span>
-            <div style="font-family: var(--font-serif); font-size: 1.8rem; color: var(--maroon-700); font-weight: 800; margin-top: 4px;">
-              ${inquiries.length}
-            </div>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">New</span>
-          </div>
-        </div>
-
-        <!-- Admin Management Tabs & Modules -->
-        <div style="display: flex; flex-direction: column; gap: 36px;">
-          <!-- 1. Update Today's Darshan -->
-          <div class="card" style="padding: 32px;">
-            <h3 style="font-family: var(--font-serif); font-size: 1.4rem; color: var(--maroon-900); margin-bottom: 20px;">
-              🪔 Manage Today's Darshan
-            </h3>
-            <form onsubmit="window.app.handleAdminUpdateDarshan(event)">
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Darshan Title *</label>
-                  <input type="text" name="title" class="form-input" value="${todayDarshan.title}" required>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Date String</label>
-                  <input type="text" name="date" class="form-input" value="${todayDarshan.date}" required>
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Deity Attire & Shringar Description</label>
-                <input type="text" name="attire" class="form-input" value="${todayDarshan.attire}" required>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Daily Devotional Message</label>
-                <textarea name="message" rows="2" class="form-textarea" required>${todayDarshan.message}</textarea>
-              </div>
-
-              <button type="submit" class="btn btn-primary">
-                Save & Publish Darshan Update
-              </button>
-            </form>
-          </div>
-
-          <!-- 2. Manage Top Announcement Banner -->
-          <div class="card" style="padding: 32px;">
-            <h3 style="font-family: var(--font-serif); font-size: 1.4rem; color: var(--maroon-900); margin-bottom: 20px;">
-              📢 Top Announcement Banner
-            </h3>
-            <form onsubmit="window.app.handleAdminUpdateAnnouncement(event)">
-              <div class="form-group">
-                <label class="form-label">Banner Text</label>
-                <input type="text" name="text" class="form-input" value="${announcement.text}" required>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Link CTA Text</label>
-                  <input type="text" name="linkText" class="form-input" value="${announcement.linkText}">
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Link URL Hash</label>
-                  <input type="text" name="linkHash" class="form-input" value="${announcement.linkHash}">
-                </div>
-              </div>
-              <button type="submit" class="btn btn-primary">
-                Update Announcement
-              </button>
-            </form>
-          </div>
-
-          <!-- 3. Recent Donations & 80G Receipts Logger -->
-          <div class="card" style="padding: 32px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
-              <h3 style="font-family: var(--font-serif); font-size: 1.4rem; color: var(--maroon-900);">
-                💳 Recent Donations & 80G Receipts
-              </h3>
-              <button onclick="window.app.exportDonationsCSV()" class="btn btn-secondary btn-sm">
-                📥 Export CSV Report
-              </button>
-            </div>
-            
-            <div class="admin-table-wrapper">
-              <table class="admin-table">
-                <thead>
-                  <tr>
-                    <th>Receipt ID</th>
-                    <th>Donor Name</th>
-                    <th>Amount</th>
-                    <th>Purpose</th>
-                    <th>Date</th>
-                    <th>PAN</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${donations.map(d => `
-                    <tr>
-                      <td><strong>${d.id}</strong></td>
-                      <td>${d.donorName}</td>
-                      <td style="color:var(--saffron-900); font-weight:bold;">₹${(Number(d.amount)||0).toLocaleString()}</td>
-                      <td>${d.purpose}</td>
-                      <td>${d.date}</td>
-                      <td>${d.pan || '—'}</td>
-                      <td>
-                        <a href="#/donate/success?id=${d.id}" class="btn btn-sm btn-secondary">
-                          View Receipt
-                        </a>
-                      </td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
 
   // ABOUT TEMPLE & DEITIES VIEW
   function renderTempleAboutView() {
@@ -3398,7 +3420,7 @@ tvat-kṛpāpekṣako nityam ity
                       <input type="email" name="email" class="form-input" required placeholder="donor@example.com">
                     </div>
                     <div class="form-group">
-                      <label class="form-label">PAN Number (For 80G Exemption)</label>
+                      <label class="form-label">PAN Number (Optional — required only for 80G Tax Exemption Certificate)</label>
                       <input type="text" name="pan" class="form-input" maxlength="10" placeholder="ABCDE1234F" style="text-transform: uppercase;">
                     </div>
                   </div>
@@ -3572,26 +3594,36 @@ tvat-kṛpāpekṣako nityam ity
   };
 
   // Quick Donation Form Submission
-  window.app.handleQuickDonationSubmit = function(e) {
+  window.app.handleQuickDonationSubmit = async function(e) {
     e.preventDefault();
     const form = e.target;
     const formData = new FormData(form);
+
+    const rawPan = (formData.get('pan') || '').trim().toUpperCase();
+    if (rawPan && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(rawPan)) {
+      showToast("Invalid PAN format. Please enter a valid 10-character PAN (e.g. ABCDE1234F) or leave it blank.", "warning");
+      return;
+    }
 
     const donationData = {
       donorName: formData.get('donorName'),
       phone: formData.get('phone'),
       email: formData.get('email'),
-      pan: formData.get('pan') || 'NOT PROVIDED',
+      pan: rawPan || null,
       amount: formData.get('amount'),
       purpose: formData.get('purpose'),
       paymentMethod: formData.get('paymentMethod'),
       address: 'Online Seva Portal'
     };
 
-    const newRecord = window.templeStore.recordDonation(donationData);
-    window.app.closeModal('donation-modal');
-    showToast("Donation successful! Generating official 80G tax receipt...", "success");
-    window.location.hash = `#/donate/success?id=${newRecord.id}`;
+    try {
+      const newRecord = await window.templeStore.recordDonation(donationData);
+      window.app.closeModal('donation-modal');
+      showToast("Donation successful! Generating official 80G tax receipt...", "success");
+      window.location.hash = `#/donate/success?id=${newRecord.id}`;
+    } catch (err) {
+      showToast("Failed to process donation. Please try again.", "danger");
+    }
   };
 
   // Seva Callback Inquiry Submission
@@ -3655,37 +3687,50 @@ tvat-kṛpāpekṣako nityam ity
     const data = window.TEMPLE_DATA;
 
     // Search Events
-    window.templeStore.getEvents().forEach(e => {
-      if (e.title.toLowerCase().includes(q) || e.shortDesc.toLowerCase().includes(q)) {
-        results.push({ title: e.title, category: 'Event', hash: `#/events/${e.id}`, subtitle: e.date });
+    (window.templeStore ? window.templeStore.getEvents() : (data?.events || [])).forEach(e => {
+      const titleStr = (e.title || '').toLowerCase();
+      const descStr = (e.shortDesc || e.description || e.fullDesc || '').toLowerCase();
+      if (titleStr.includes(q) || descStr.includes(q)) {
+        results.push({ title: e.title || 'Temple Event', category: 'Event', hash: `#/events/${e.id}`, subtitle: e.date || '' });
       }
     });
 
     // Search Seva
-    window.templeStore.getSevas().forEach(s => {
-      if (s.title.toLowerCase().includes(q) || s.shortDesc.toLowerCase().includes(q)) {
-        results.push({ title: s.title, category: 'Seva', hash: `#/seva`, subtitle: s.impact });
+    (window.templeStore ? window.templeStore.getSevas() : (data?.sevaCategories || [])).forEach(s => {
+      const titleStr = (s.title || '').toLowerCase();
+      const descStr = (s.shortDesc || s.description || '').toLowerCase();
+      if (titleStr.includes(q) || descStr.includes(q)) {
+        results.push({ title: s.title || 'Temple Seva', category: 'Seva', hash: `#/seva`, subtitle: s.impact || '' });
       }
     });
 
     // Search Gita Chapters
-    data.bhagavadGita.chapters.forEach(c => {
-      if (c.titleEnglish.toLowerCase().includes(q) || c.titleSanskrit.includes(q) || c.summary.toLowerCase().includes(q)) {
-        results.push({ title: `Gita Ch ${c.number}: ${c.titleEnglish}`, category: 'Bhagavad Gita', hash: `#/bhagavad-gita?chapter=${c.number}`, subtitle: c.titleSanskrit });
+    (data?.bhagavadGita?.chapters || []).forEach(c => {
+      const titleEn = (c.titleEnglish || '').toLowerCase();
+      const titleSa = (c.titleSanskrit || '').toLowerCase();
+      const summaryText = (c.summary || '').toLowerCase();
+      if (titleEn.includes(q) || titleSa.includes(q) || summaryText.includes(q)) {
+        results.push({ title: `Gita Ch ${c.number}: ${c.titleEnglish || ''}`, category: 'Bhagavad Gita', hash: `#/bhagavad-gita?chapter=${c.number}`, subtitle: c.titleSanskrit || '' });
       }
     });
 
-    // Search Articles
-    data.articles.forEach(a => {
-      if (a.title.toLowerCase().includes(q) || a.excerpt.toLowerCase().includes(q)) {
-        results.push({ title: a.title, category: 'Article', hash: `#/articles?id=${a.id}`, subtitle: a.readTime });
+    // Search Articles & Wisdom
+    const articleList = (window.templeStore ? window.templeStore.getQuotes() : null) || data?.articles || [];
+    articleList.forEach(a => {
+      const titleStr = (a.title || a.text || '').toLowerCase();
+      const excerptStr = (a.excerpt || a.text || a.author || '').toLowerCase();
+      if (titleStr.includes(q) || excerptStr.includes(q)) {
+        const displayTitle = a.title || (a.text ? a.text.slice(0, 50) + '...' : 'Wisdom Quote');
+        results.push({ title: displayTitle, category: 'Article', hash: `#/articles?id=${a.id}`, subtitle: a.author || a.readTime || '' });
       }
     });
 
     // Search Schedule Timings
-    window.templeStore.getSchedule().forEach(s => {
-      if (s.name.toLowerCase().includes(q) || s.desc.toLowerCase().includes(q)) {
-        results.push({ title: s.name, category: 'Temple Aarti', hash: `#/timings`, subtitle: s.time });
+    (window.templeStore ? window.templeStore.getSchedule() : (data?.schedule || [])).forEach(s => {
+      const nameStr = (s.name || '').toLowerCase();
+      const descStr = (s.desc || s.description || '').toLowerCase();
+      if (nameStr.includes(q) || descStr.includes(q)) {
+        results.push({ title: s.name || 'Aarti', category: 'Temple Aarti', hash: `#/timings`, subtitle: s.time || '' });
       }
     });
 
@@ -3708,192 +3753,130 @@ tvat-kṛpāpekṣako nityam ity
   // =========================================================================
   // FORM HANDLERS
   // =========================================================================
-  window.app.handleDonationSubmit = function(e) {
+  window.app.handleDonationSubmit = async function(e) {
     e.preventDefault();
     const form = e.target;
     const formData = new FormData(form);
+
+    const rawPan = (formData.get('pan') || '').trim().toUpperCase();
+    if (rawPan && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(rawPan)) {
+      showToast("Invalid PAN format. Please enter a valid 10-character PAN (e.g. ABCDE1234F) or leave it blank.", "warning");
+      return;
+    }
 
     const donationData = {
       donorName: formData.get('donorName'),
       phone: formData.get('phone'),
       email: formData.get('email'),
-      pan: formData.get('pan'),
+      pan: rawPan || null,
       amount: formData.get('amount'),
       purpose: formData.get('purpose'),
       paymentMethod: formData.get('paymentMethod'),
       address: formData.get('address')
     };
 
-    const newRecord = window.templeStore.recordDonation(donationData);
-    showToast("Donation successful! Generating official 80G receipt...", "success");
-    window.location.hash = `#/donate/success?id=${newRecord.id}`;
+    try {
+      const newRecord = await window.templeStore.recordDonation(donationData);
+      showToast("Donation successful! Generating official 80G receipt...", "success");
+      window.location.hash = `#/donate/success?id=${newRecord.id}`;
+    } catch (err) {
+      showToast("Failed to process donation. Please try again.", "danger");
+    }
   };
 
-  window.app.handleCheckoutSubmit = function(e) {
+  window.app.handleCheckoutSubmit = async function(e) {
     e.preventDefault();
     const form = e.target;
     const formData = new FormData(form);
+
+    const rawPan = (formData.get('pan') || '').trim().toUpperCase();
+    if (rawPan && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(rawPan)) {
+      showToast("Invalid PAN format. Please enter a valid 10-character PAN (e.g. ABCDE1234F) or leave it blank.", "warning");
+      return;
+    }
 
     const donationData = {
       donorName: formData.get('donorName'),
       phone: formData.get('phone'),
       email: formData.get('email'),
-      pan: formData.get('pan'),
+      pan: rawPan || null,
       amount: formData.get('amount'),
       purpose: formData.get('purpose'),
       paymentMethod: formData.get('paymentMethod')
     };
 
-    const newRecord = window.templeStore.recordDonation(donationData);
-    window.app.closeModal('checkout-modal');
-    showToast("Seva payment verified successfully! Thank you.", "success");
-    window.location.hash = `#/donate/success?id=${newRecord.id}`;
-  };
-
-  window.app.handleEventRsvpSubmit = function(e, eventId) {
-    e.preventDefault();
-    const form = e.target;
-    const formData = new FormData(form);
-
-    window.templeStore.registerForEvent({
-      eventId: eventId,
-      name: formData.get('name'),
-      phone: formData.get('phone'),
-      email: formData.get('email'),
-      attendees: formData.get('attendees')
-    });
-
-    window.app.closeModal('checkout-modal');
-    showToast("Registration Confirmed! We look forward to your presence.", "success");
-  };
-
-  window.app.handleVolunteerSubmit = function(e) {
-    e.preventDefault();
-    const form = e.target;
-    const formData = new FormData(form);
-
-    window.templeStore.submitVolunteer({
-      name: formData.get('name'),
-      phone: formData.get('phone'),
-      email: formData.get('email'),
-      age: formData.get('age'),
-      interest: formData.get('interest'),
-      availability: formData.get('availability'),
-      message: formData.get('message')
-    });
-
-    form.reset();
-    showToast("Thank you for offering your seva! Our team will contact you soon.", "success");
-  };
-
-  window.app.handleInquirySubmit = function(e) {
-    e.preventDefault();
-    const form = e.target;
-    const formData = new FormData(form);
-
-    window.templeStore.submitInquiry({
-      name: formData.get('name'),
-      phone: formData.get('phone'),
-      email: formData.get('email'),
-      subject: formData.get('subject'),
-      message: formData.get('message')
-    });
-
-    form.reset();
-    showToast("Your message has been sent to the temple office. Hare Krishna!", "success");
-  };
-
-  // Admin Actions
-  window.app.handleAdminLogin = function(e) {
-    e.preventDefault();
-    const userElem = document.getElementById('admin-username');
-    const passElem = document.getElementById('admin-passcode');
-    const user = userElem ? userElem.value.trim() : '';
-    const pass = passElem ? passElem.value.trim() : '';
-
-    if (
-      (user === 'iskcongim' && pass === 'iskconrmm2023') ||
-      pass === 'iskconrmm2023' ||
-      pass === 'krishna108' ||
-      pass === 'admin123'
-    ) {
-      isAdminAuthenticated = true;
-      showToast("Login Successful Prabhu! Welcome to Temple Admin Dashboard!", "success");
-      renderAdminView();
-    } else {
-      showToast("Login failed Prabhu! Please enter correct Admin ID and Password.", "error");
+    try {
+      const newRecord = await window.templeStore.recordDonation(donationData);
+      window.app.closeModal('checkout-modal');
+      showToast("Seva payment verified successfully! Thank you.", "success");
+      window.location.hash = `#/donate/success?id=${newRecord.id}`;
+    } catch (err) {
+      showToast("Failed to process donation. Please try again.", "danger");
     }
   };
 
-  window.app.handleAdminLogout = function() {
-    isAdminAuthenticated = false;
-    showToast("Logged out from Admin CMS.", "info");
-    renderAdminView();
-  };
-
-  window.app.handleAdminUpdateDarshan = function(e) {
+  window.app.handleEventRsvpSubmit = async function(e, eventId) {
     e.preventDefault();
     const form = e.target;
     const formData = new FormData(form);
 
-    window.templeStore.updateTodayDarshan({
-      title: formData.get('title'),
-      date: formData.get('date'),
-      attire: formData.get('attire'),
-      message: formData.get('message')
-    });
-
-    showToast("Today's Darshan updated successfully!", "success");
-    renderAdminView();
+    try {
+      await window.templeStore.registerForEvent({
+        eventId: eventId,
+        name: formData.get('name'),
+        phone: formData.get('phone'),
+        email: formData.get('email'),
+        attendees: formData.get('attendees')
+      });
+      window.app.closeModal('checkout-modal');
+      showToast("Registration Confirmed! We look forward to your presence.", "success");
+    } catch (err) {
+      showToast("Failed to confirm RSVP. Please try again.", "danger");
+    }
   };
 
-  window.app.handleAdminUpdateAnnouncement = function(e) {
+  window.app.handleVolunteerSubmit = async function(e) {
     e.preventDefault();
     const form = e.target;
     const formData = new FormData(form);
 
-    window.templeStore.updateAnnouncement({
-      enabled: true,
-      text: formData.get('text'),
-      linkText: formData.get('linkText'),
-      linkHash: formData.get('linkHash')
-    });
-
-    const bannerText = document.getElementById('announcement-banner-text');
-    if (bannerText) {
-      bannerText.innerHTML = `
-        ${formData.get('text')}
-        <a href="${formData.get('linkHash')}">${formData.get('linkText')}</a>
-      `;
-    }
-
-    showToast("Announcement banner updated!", "success");
-  };
-
-  window.app.resetAdminData = function() {
-    if (confirm("Reset all CMS content to default seed data?")) {
-      window.templeStore.resetToDefaults();
-      showToast("All data reset to official defaults.", "info");
-      renderAdminView();
+    try {
+      await window.templeStore.submitVolunteer({
+        name: formData.get('name'),
+        phone: formData.get('phone'),
+        email: formData.get('email'),
+        age: formData.get('age'),
+        interest: formData.get('interest'),
+        availability: formData.get('availability'),
+        message: formData.get('message')
+      });
+      form.reset();
+      showToast("Thank you for offering your seva! Our team will contact you soon.", "success");
+    } catch (err) {
+      showToast("Failed to submit volunteer form. Please try again.", "danger");
     }
   };
 
-  window.app.exportDonationsCSV = function() {
-    const donations = window.templeStore.getDonations();
-    let csv = "Receipt ID,Donor Name,Amount,Purpose,Date,PAN,Phone,Email\n";
-    donations.forEach(d => {
-      csv += `"${d.id}","${d.donorName}","${d.amount}","${d.purpose}","${d.date}","${d.pan || ''}","${d.phone || ''}","${d.email || ''}"\n`;
-    });
+  window.app.handleInquirySubmit = async function(e) {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
 
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `ISKCON_Gandhidham_Donations_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast("Donation records downloaded as CSV.", "success");
+    try {
+      await window.templeStore.submitInquiry({
+        name: formData.get('name'),
+        phone: formData.get('phone'),
+        email: formData.get('email'),
+        subject: formData.get('subject'),
+        message: formData.get('message')
+      });
+      form.reset();
+      showToast("Your message has been sent to the temple office. Hare Krishna!", "success");
+    } catch (err) {
+      showToast("Failed to submit inquiry. Please try again.", "danger");
+    }
   };
+
 
   // Helper Utility Actions
   window.app.navigateGitaChapter = function(chNum) {
@@ -4027,14 +4010,17 @@ tvat-kṛpāpekṣako nityam ity
   };
 
   window.app.downloadCalendarEvent = function(eventId) {
-    const evt = window.templeStore.getEventById(eventId) || window.templeStore.getEvents()[0];
+    const evt = window.templeStore.getEventById(eventId) || window.templeStore.getEvents()[0] || {};
+    const titleText = evt.title || 'Temple Event';
+    const descText = evt.shortDesc || evt.description || evt.fullDesc || '';
+    const locText = evt.location || 'Temple Sanctuary';
     const icsContent = `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//ISKCON Gandhidham//Temple Events//EN
 BEGIN:VEVENT
-SUMMARY:${evt.title}
-DESCRIPTION:${evt.shortDesc}
-LOCATION:${evt.location}
+SUMMARY:${titleText}
+DESCRIPTION:${descText}
+LOCATION:${locText}
 STATUS:CONFIRMED
 END:VEVENT
 END:VCALENDAR`;
@@ -4043,7 +4029,7 @@ END:VCALENDAR`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${evt.id}.ics`;
+    a.download = `${evt.id || 'event'}.ics`;
     a.click();
     URL.revokeObjectURL(url);
     showToast("Event downloaded to your calendar.", "success");
@@ -4166,6 +4152,379 @@ END:VCALENDAR`;
               </div>
             </div>
           `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // =========================================================================
+  // 2. SRI BRAHMA SAMHITA VIEW
+  // =========================================================================
+  function renderBrahmaSamhitaView(params) {
+    const bs = window.TEMPLE_DATA?.brahmaSamhita || {};
+    const slokas = bs.slokas || [];
+
+    mainContentElem.innerHTML = `
+      <div style="position: relative; background: linear-gradient(135deg, rgba(40, 4, 10, 0.70) 0%, rgba(15, 2, 5, 0.80) 100%), url('assets/images/hero_radha_madanmohan.jpg') center/cover no-repeat; color: #FFF; padding: 75px 0 65px 0; border-bottom: 2px solid var(--gold-500); overflow: hidden; margin-bottom: 40px;">
+        <div style="position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 35%, rgba(10, 1, 3, 0.60) 100%); pointer-events: none;"></div>
+        <div class="main-container" style="position: relative; z-index: 2; text-align: center;">
+          <span class="sacred-badge gold" style="margin-bottom: 8px;">📜 VEDIC HYMNS OF CREATION • CHAPTER 5</span>
+          <h1 style="font-family: var(--font-serif); font-size: 2.8rem; margin: 12px 0; color: #FFFDF9;">${escapeHTML(bs.title || 'Sri Brahma Samhita')}</h1>
+          <p style="color: var(--gold-300); font-size: 1.15rem; max-width: 780px; margin: 0 auto 16px auto; font-family: var(--font-serif); font-style: italic;">
+            ${escapeHTML(bs.subTitle || 'The Transcendental Hymns of Creation Spoken by Lord Brahma')}
+          </p>
+          <p style="color: #F7FAFC; font-size: 0.95rem; max-width: 820px; margin: 0 auto 24px auto; line-height: 1.7;">
+            ${escapeHTML(bs.overview || '')}
+          </p>
+          <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+            <a href="#bs-5-1" class="btn btn-gold btn-sm">Read Verse 5.1 (ईश्वरः परमः कृष्णः)</a>
+            <button onclick="window.app.openCheckout('Course Registration: Sri Brahma Samhita', 501)" class="btn btn-outline-light btn-sm">🎓 Enroll in Course</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="main-container section-padding" style="padding-top: 0;">
+        <!-- Philosophical Importance Cards -->
+        <h2 style="font-family: var(--font-serif); font-size: 2rem; color: var(--maroon-900); text-align: center; margin-bottom: 30px;">
+          Glories & Philosophical Significance
+        </h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 50px;">
+          ${(bs.importance || []).map(item => `
+            <div class="card" style="padding: 24px; border: 1.5px solid var(--gold-300); background: #FFFDF9; border-radius: var(--radius-md);">
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                <span style="font-size: 1.4rem;">✨</span>
+                <h3 style="font-family: var(--font-serif); font-size: 1.15rem; color: var(--maroon-900); margin: 0;">${escapeHTML(item.title)}</h3>
+              </div>
+              <p style="color: var(--text-main); font-size: 0.92rem; line-height: 1.65; margin: 0;">${escapeHTML(item.desc)}</p>
+            </div>
+          `).join('')}
+        </div>
+
+        <!-- Sacred Verses Display -->
+        <h2 style="font-family: var(--font-serif); font-size: 2rem; color: var(--maroon-900); text-align: center; margin-bottom: 8px;">
+          Sacred Slokas (Chapter 5)
+        </h2>
+        <p style="text-align: center; color: var(--text-muted); margin-bottom: 36px;">
+          Recited in the early morning Brahma-Muhurta across all ISKCON temples worldwide
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 32px; max-width: 900px; margin: 0 auto 60px auto;">
+          ${slokas.map(s => `
+            <div id="${s.id || ''}" class="card" style="padding: 32px; border: 2px solid var(--gold-400); border-radius: var(--radius-lg); background: #FFFDF9; box-shadow: 0 4px 20px rgba(0,0,0,0.04);">
+              <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--gold-200); padding-bottom: 14px; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+                <span class="sacred-badge gold" style="font-size: 0.9rem;">Verse ${escapeHTML(s.verse)}</span>
+                <h3 style="font-family: var(--font-serif); font-size: 1.25rem; color: var(--maroon-900); margin: 0;">${escapeHTML(s.title)}</h3>
+              </div>
+
+              <!-- Sanskrit text -->
+              <div style="font-family: 'Tiro Devanagari Sanskrit', serif; font-size: 1.4rem; line-height: 2; color: var(--maroon-900); text-align: center; margin-bottom: 18px; white-space: pre-line; background: var(--saffron-50); padding: 20px; border-radius: var(--radius-sm); border: 1px dashed var(--gold-400);">
+                ${escapeHTML(s.sanskrit)}
+              </div>
+
+              <!-- Transliteration -->
+              <div style="font-style: italic; color: var(--saffron-900); font-weight: 600; text-align: center; margin-bottom: 20px; line-height: 1.7; font-size: 1.02rem;">
+                ${escapeHTML(s.transliteration)}
+              </div>
+
+              <!-- Translation -->
+              <div style="margin-bottom: 20px; line-height: 1.7; color: var(--text-main); font-size: 1rem; border-left: 4px solid var(--gold-500); padding-left: 16px;">
+                <strong>Translation:</strong> ${escapeHTML(s.translation)}
+              </div>
+
+              <!-- Purport -->
+              ${s.purport ? `
+                <div style="background: rgba(0,0,0,0.02); padding: 18px; border-radius: var(--radius-sm); font-size: 0.92rem; line-height: 1.7; color: var(--text-muted); margin-bottom: 20px;">
+                  <strong style="color: var(--maroon-900);">Purport:</strong> ${escapeHTML(s.purport)}
+                </div>
+              ` : ''}
+
+              <!-- Actions -->
+              <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
+                <button class="btn btn-sm btn-secondary" onclick="window.app.copyShlokaText('${escapeHTML(s.sanskrit + '\n\n' + s.translation).replace(/'/g, "\\'")}')">
+                  📋 Copy Sloka
+                </button>
+                <button class="btn btn-sm btn-secondary" onclick="window.app.shareMantraWhatsApp('${escapeHTML(s.title).replace(/'/g, "\\'")}', '${escapeHTML(s.sanskrit).replace(/'/g, "\\'")}', '${escapeHTML(s.translation).replace(/'/g, "\\'")}')">
+                  💬 Share WhatsApp
+                </button>
+                <button class="btn btn-sm btn-primary" onclick="window.app.openCheckout('Sri Brahma Samhita Seva', 501)">
+                  🙏 Offer Seva
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <!-- Course CTA -->
+        <div class="card" style="padding: 36px; border: 2px solid var(--gold-500); background: linear-gradient(135deg, #FFFDF9 0%, var(--saffron-50) 100%); text-align: center; border-radius: var(--radius-lg); max-width: 900px; margin: 0 auto;">
+          <span style="font-size: 2.5rem; display: block; margin-bottom: 12px;">🎓</span>
+          <h3 style="font-family: var(--font-serif); font-size: 1.8rem; color: var(--maroon-900); margin-bottom: 10px;">
+            Want to Study Sri Brahma Samhita in Depth?
+          </h3>
+          <p style="color: var(--text-muted); max-width: 650px; margin: 0 auto 24px auto; line-height: 1.6;">
+            Join our 6-week interactive course conducted by senior Vaishnavas at ISKCON Gandhidham Gurukul. Master Sanskrit meter, word-for-word translation, and esoteric Vaishnava Siddhanta.
+          </p>
+          <div style="display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;">
+            <button onclick="window.app.openCheckout('Course Registration: Sri Brahma Samhita', 501)" class="btn btn-primary btn-lg">
+              Enroll in Brahma Samhita Course
+            </button>
+            <a href="#/classes" class="btn btn-secondary btn-lg">View All Courses</a>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // =========================================================================
+  // 3. SUDHAMA SEWAK PATRON VIEW
+  // =========================================================================
+  function renderSudhamaSewakView(params) {
+    mainContentElem.innerHTML = `
+      <div style="position: relative; background: linear-gradient(135deg, rgba(40, 4, 10, 0.70) 0%, rgba(15, 2, 5, 0.80) 100%), url('assets/images/gallery/temple_photo_01.jpg') center/cover no-repeat; color: #FFF; padding: 75px 0 65px 0; border-bottom: 2px solid var(--gold-500); overflow: hidden; margin-bottom: 40px;">
+        <div style="position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 35%, rgba(10, 1, 3, 0.60) 100%); pointer-events: none;"></div>
+        <div class="main-container" style="position: relative; z-index: 2; text-align: center;">
+          <span class="sacred-badge gold" style="margin-bottom: 8px;">🤝 SACRED MONTHLY PATRON MEMBERSHIP</span>
+          <h1 style="font-family: var(--font-serif); font-size: 2.8rem; margin: 12px 0; color: #FFFDF9;">Sudhama Sewak Membership</h1>
+          <p style="color: var(--gold-300); font-size: 1.15rem; max-width: 760px; margin: 0 auto 16px auto; font-family: var(--font-serif); font-style: italic;">
+            "Just as Lord Krishna lovingly accepted the humble chipped rice of Sudama Vipra, He accepts every offering given with pure love."
+          </p>
+          <p style="color: #F7FAFC; font-size: 0.95rem; max-width: 780px; margin: 0 auto 24px auto; line-height: 1.7;">
+            Become an eternal pillar of ISKCON Gandhidham. Your continuous monthly seva ensures daily deity worship, Anna Daan prasadam distribution to thousands, and Vedic youth empowerment in Kutch.
+          </p>
+          <button onclick="window.app.openCheckout('Sudhama Sewak Monthly Patron', 1100)" class="btn btn-gold btn-lg">
+            🤝 Enroll as Sudhama Sewak Today
+          </button>
+        </div>
+      </div>
+
+      <div class="main-container section-padding" style="padding-top: 0;">
+        <!-- Story of Sudama -->
+        <div class="card" style="padding: 32px; border: 1.5px solid var(--gold-400); background: #FFFDF9; border-radius: var(--radius-lg); margin-bottom: 48px; max-width: 900px; margin-left: auto; margin-right: auto;">
+          <div style="display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap;">
+            <div style="font-size: 3rem;">🍚</div>
+            <div style="flex: 1; min-width: 260px;">
+              <h3 style="font-family: var(--font-serif); color: var(--maroon-900); font-size: 1.4rem; margin-bottom: 8px;">
+                The Spirit of Sudama Seva
+              </h3>
+              <p style="color: var(--text-main); font-size: 0.95rem; line-height: 1.7; margin: 0;">
+                Sudama was Lord Sri Krishna's poor brahmana school friend who visited Dwaraka with nothing but a fistful of dry broken rice tied in an old cloth. Seeing his pure unalloyed love, the Supreme Lord of the universe embraced him, washed his lotus feet, ate his offering with supreme delight, and blessed him with unlimited opulence in this world and eternal shelter in Vaikuntha.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Patron Tiers -->
+        <h2 style="font-family: var(--font-serif); font-size: 2rem; color: var(--maroon-900); text-align: center; margin-bottom: 8px;">
+          Choose Your Monthly Seva Pledge
+        </h2>
+        <p style="text-align: center; color: var(--text-muted); margin-bottom: 36px;">
+          All contributions are eligible for 50% Tax Exemption under Section 80G of the Income Tax Act
+        </p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; margin-bottom: 50px;">
+          <!-- Tier 1 -->
+          <div class="card" style="padding: 28px; border: 1.5px solid var(--border-color); display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <span class="sacred-badge" style="background: #E2E8F0; color: #4A5568; margin-bottom: 12px;">🥈 SILVER SEWAK</span>
+              <h3 style="font-family: var(--font-serif); font-size: 1.5rem; color: var(--maroon-900); margin-bottom: 6px;">₹501 <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">/ month</span></h3>
+              <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 18px;">Support daily Archana & Pushpa Seva for Sri Sri Radha Madanmohanji.</p>
+              <ul style="list-style: none; padding: 0; margin-bottom: 24px; display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem; color: var(--text-main);">
+                <li>✓ Daily Archana in your family name</li>
+                <li>✓ Monthly e-Darshan album & Newsletter</li>
+                <li>✓ 80G Tax Exemption Certificate</li>
+              </ul>
+            </div>
+            <button onclick="window.app.openCheckout('Silver Sudhama Sewak (₹501/mo)', 501)" class="btn btn-secondary" style="width: 100%;">Pledge ₹501 / mo</button>
+          </div>
+
+          <!-- Tier 2 (Highlighted) -->
+          <div class="card" style="padding: 28px; border: 2.5px solid var(--gold-500); background: #FFFDF9; display: flex; flex-direction: column; justify-content: space-between; transform: translateY(-4px); box-shadow: 0 8px 30px rgba(184, 134, 11, 0.15);">
+            <div>
+              <span class="sacred-badge gold" style="margin-bottom: 12px;">🥇 GOLDEN SEWAK (POPULAR)</span>
+              <h3 style="font-family: var(--font-serif); font-size: 1.5rem; color: var(--maroon-900); margin-bottom: 6px;">₹1,100 <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">/ month</span></h3>
+              <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 18px;">Sponsor Anna Daan prasadam for 25 pilgrims every single month.</p>
+              <ul style="list-style: none; padding: 0; margin-bottom: 24px; display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem; color: var(--text-main);">
+                <li>✓ Special Puja on your Birthday / Anniversary</li>
+                <li>✓ Temple Maha-Prasadam delivered to home</li>
+                <li>✓ Preferred Darshan passes during Janmashtami</li>
+                <li>✓ 80G Tax Exemption Certificate</li>
+              </ul>
+            </div>
+            <button onclick="window.app.openCheckout('Golden Sudhama Sewak (₹1,100/mo)', 1100)" class="btn btn-primary" style="width: 100%;">Pledge ₹1,100 / mo</button>
+          </div>
+
+          <!-- Tier 3 -->
+          <div class="card" style="padding: 28px; border: 1.5px solid var(--border-color); display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <span class="sacred-badge" style="background: #EBF8FF; color: #2B6CB0; margin-bottom: 12px;">💎 DIAMOND SEWAK</span>
+              <h3 style="font-family: var(--font-serif); font-size: 1.5rem; color: var(--maroon-900); margin-bottom: 6px;">₹2,100 <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">/ month</span></h3>
+              <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 18px;">Support Goshala cow maintenance, green fodder, and medical care.</p>
+              <ul style="list-style: none; padding: 0; margin-bottom: 24px; display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem; color: var(--text-main);">
+                <li>✓ Gau Seva & Anna Daan performed monthly</li>
+                <li>✓ Free spiritual book set & Bhagavad Gita</li>
+                <li>✓ VIP Abhishek participation on Janmashtami</li>
+                <li>✓ 80G Tax Exemption Certificate</li>
+              </ul>
+            </div>
+            <button onclick="window.app.openCheckout('Diamond Sudhama Sewak (₹2,100/mo)', 2100)" class="btn btn-secondary" style="width: 100%;">Pledge ₹2,100 / mo</button>
+          </div>
+
+          <!-- Tier 4 -->
+          <div class="card" style="padding: 28px; border: 1.5px solid var(--gold-400); display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <span class="sacred-badge gold" style="margin-bottom: 12px;">👑 PLATINUM PATRON</span>
+              <h3 style="font-family: var(--font-serif); font-size: 1.5rem; color: var(--maroon-900); margin-bottom: 6px;">₹5,100 <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">/ month</span></h3>
+              <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 18px;">Deity Rajbhoga & Royal Poshaka Seva for Sri Sri Radha Madanmohanji.</p>
+              <ul style="list-style: none; padding: 0; margin-bottom: 24px; display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem; color: var(--text-main);">
+                <li>✓ Full Deity Rajbhog offered in family name</li>
+                <li>✓ Personalized Silver Coin with Deity Darshan</li>
+                <li>✓ Lifetime invitation to all temple consecrations</li>
+                <li>✓ 80G Tax Exemption Certificate</li>
+              </ul>
+            </div>
+            <button onclick="window.app.openCheckout('Platinum Sudhama Sewak (₹5,100/mo)', 5100)" class="btn btn-gold" style="width: 100%;">Pledge ₹5,100 / mo</button>
+          </div>
+        </div>
+
+        <!-- Contact Coordinator CTA -->
+        <div style="text-align: center; padding: 24px; background: var(--saffron-50); border-radius: var(--radius-md); border: 1px solid var(--gold-300); max-width: 700px; margin: 0 auto;">
+          <h4 style="font-family: var(--font-serif); color: var(--maroon-900); margin-bottom: 8px;">Prefer to set up automated Bank Standing Instructions?</h4>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">Our Temple Seva Coordinator will assist you with direct HDFC Bank NACH / Auto-Debit mandate forms.</p>
+          <button onclick="window.app.startWhatsAppChat('Hare Krishna! I would like to set up a monthly Sudhama Sewak standing donation for ISKCON Gandhidham.')" class="btn btn-secondary">
+            💬 Talk to Seva Coordinator on WhatsApp
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  // =========================================================================
+  // 4. SEVA DETAIL VIEW
+  // =========================================================================
+  function renderSevaDetailView(sevaId) {
+    const sevas = (window.templeStore && window.templeStore.getSevas()) || window.TEMPLE_DATA?.sevaCategories || [];
+    const seva = sevas.find(s => s.id === sevaId) || sevas[0];
+    if (!seva) {
+      renderSevaView({});
+      return;
+    }
+
+    mainContentElem.innerHTML = `
+      <div style="position: relative; background: linear-gradient(135deg, rgba(40, 4, 10, 0.70) 0%, rgba(15, 2, 5, 0.80) 100%), url('${seva.image || 'assets/images/gallery/temple_photo_06.jpg'}') center/cover no-repeat; color: #FFF; padding: 75px 0 65px 0; border-bottom: 2px solid var(--gold-500); overflow: hidden; margin-bottom: 40px;">
+        <div style="position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 35%, rgba(10, 1, 3, 0.60) 100%); pointer-events: none;"></div>
+        <div class="main-container" style="position: relative; z-index: 2; text-align: center;">
+          <span class="sacred-badge gold" style="margin-bottom: 8px;">🙏 SACRED SEVA OPPORTUNITY</span>
+          <h1 style="font-family: var(--font-serif); font-size: 2.8rem; margin: 12px 0; color: #FFFDF9;">${escapeHTML(seva.title)}</h1>
+          <p style="color: var(--gold-300); font-size: 1.15rem; max-width: 700px; margin: 0 auto;">
+            ${escapeHTML(seva.tagline || seva.description || '')}
+          </p>
+        </div>
+      </div>
+
+      <div class="main-container section-padding" style="padding-top: 0; max-width: 900px;">
+        <div class="card" style="padding: 36px; border: 1.5px solid var(--gold-300); background: #FFFDF9; border-radius: var(--radius-lg); margin-bottom: 36px;">
+          <h2 style="font-family: var(--font-serif); color: var(--maroon-900); font-size: 1.8rem; margin-bottom: 12px;">About this Seva</h2>
+          <p style="color: var(--text-main); font-size: 1.05rem; line-height: 1.7; margin-bottom: 28px;">
+            ${escapeHTML(seva.description || '')}
+          </p>
+
+          <h3 style="font-family: var(--font-serif); color: var(--maroon-900); font-size: 1.3rem; margin-bottom: 16px;">Suggested Seva Offerings</h3>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 32px;">
+            ${(seva.presets || [
+              { amount: 1100, label: '1 Day Seva', desc: 'Cover essential daily seva expenses' },
+              { amount: 2501, label: 'Special Puja Seva', desc: 'Conducted in your family name' },
+              { amount: 5001, label: 'Festival Maha Seva', desc: 'Grand Abhishek & Prasad sponsorship' }
+            ]).map(p => `
+              <div class="card" style="padding: 20px; border: 1.5px solid var(--gold-400); background: #FFF; border-radius: var(--radius-md); display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                  <h4 style="margin: 0 0 6px 0; font-family: var(--font-serif); color: var(--maroon-900); font-size: 1.2rem;">₹${Number(p.amount).toLocaleString('en-IN')}</h4>
+                  <strong style="color: var(--saffron-800); font-size: 0.92rem;">${escapeHTML(p.label)}</strong>
+                  <p style="color: var(--text-muted); font-size: 0.85rem; margin: 6px 0 16px 0;">${escapeHTML(p.desc || '')}</p>
+                </div>
+                <button onclick="window.app.openCheckout('${escapeHTML(seva.title)} — ${escapeHTML(p.label)}', ${p.amount})" class="btn btn-primary" style="width: 100%;">
+                  Offer ₹${Number(p.amount).toLocaleString('en-IN')}
+                </button>
+              </div>
+            `).join('')}
+          </div>
+
+          <div style="display: flex; gap: 14px; flex-wrap: wrap;">
+            <button onclick="window.app.openDonationModal('${escapeHTML(seva.title)}', 2100)" class="btn btn-gold btn-lg">
+              🙏 Offer Custom Amount
+            </button>
+            <a href="#/seva" class="btn btn-secondary btn-lg">← View All Sevas</a>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // =========================================================================
+  // 5. MANTRA DETAIL VIEW
+  // =========================================================================
+  function renderMantraDetailView(mantraId) {
+    const data = window.TEMPLE_DATA || {};
+    const allMantras = [
+      ...(data.mantrasAndShlokas?.prayers || []),
+      ...(data.mantrasAndShlokas?.mantras || []),
+      ...(data.brahmaSamhita?.slokas || [])
+    ];
+    const mantra = allMantras.find(m => m.id === mantraId || m.id === `bs-${mantraId}`) || allMantras[0];
+    if (!mantra) {
+      renderMantrasAndShlokasView({});
+      return;
+    }
+
+    mainContentElem.innerHTML = `
+      <div style="position: relative; background: linear-gradient(135deg, rgba(40, 4, 10, 0.70) 0%, rgba(15, 2, 5, 0.80) 100%), url('assets/images/gallery/temple_photo_05.jpg') center/cover no-repeat; color: #FFF; padding: 75px 0 65px 0; border-bottom: 2px solid var(--gold-500); overflow: hidden; margin-bottom: 40px;">
+        <div style="position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 35%, rgba(10, 1, 3, 0.60) 100%); pointer-events: none;"></div>
+        <div class="main-container" style="position: relative; z-index: 2; text-align: center;">
+          <span class="sacred-badge gold" style="margin-bottom: 8px;">📿 SACRED VEDIC SHLOKA</span>
+          <h1 style="font-family: var(--font-serif); font-size: 2.8rem; margin: 12px 0; color: #FFFDF9;">${escapeHTML(mantra.title)}</h1>
+          <p style="color: var(--gold-300); font-size: 1.15rem; max-width: 700px; margin: 0 auto;">
+            ${escapeHTML(mantra.source || 'Ancient Vedic Scripture')}
+          </p>
+        </div>
+      </div>
+
+      <div class="main-container section-padding" style="padding-top: 0; max-width: 860px;">
+        <div class="card" style="padding: 36px; border: 2px solid var(--gold-400); background: #FFFDF9; border-radius: var(--radius-lg); margin-bottom: 36px;">
+          <!-- Sanskrit Text -->
+          <div style="font-family: 'Tiro Devanagari Sanskrit', serif; font-size: 1.45rem; line-height: 2.1; color: var(--maroon-900); text-align: center; margin-bottom: 24px; white-space: pre-line; background: var(--saffron-50); padding: 24px; border-radius: var(--radius-md); border: 1px dashed var(--gold-400);">
+            ${escapeHTML(mantra.sanskrit || mantra.verse || '')}
+          </div>
+
+          <!-- Transliteration -->
+          <div style="font-style: italic; color: var(--saffron-900); font-weight: 600; text-align: center; margin-bottom: 24px; line-height: 1.8; font-size: 1.05rem;">
+            ${escapeHTML(mantra.transliteration || '')}
+          </div>
+
+          <!-- Translation -->
+          <div style="margin-bottom: 28px; line-height: 1.8; color: var(--text-main); font-size: 1.05rem; border-left: 4px solid var(--gold-500); padding-left: 18px;">
+            <strong style="color: var(--maroon-900);">Translation:</strong><br>
+            ${escapeHTML(mantra.translation || '')}
+          </div>
+
+          <!-- Purport -->
+          ${mantra.purport ? `
+            <div style="background: rgba(0,0,0,0.02); padding: 20px; border-radius: var(--radius-md); font-size: 0.95rem; line-height: 1.7; color: var(--text-muted); margin-bottom: 28px;">
+              <strong style="color: var(--maroon-900);">Purport / Significance:</strong><br>
+              ${escapeHTML(mantra.purport)}
+            </div>
+          ` : ''}
+
+          <!-- Buttons -->
+          <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+            <button class="btn btn-primary" onclick="window.app.chantMantra('${escapeHTML(mantra.id)}')">
+              📿 Listen / Chant Mantra
+            </button>
+            <button class="btn btn-secondary" onclick="window.app.copyShlokaById('${escapeHTML(mantra.id)}')">
+              📋 Copy Shloka
+            </button>
+            <button class="btn btn-secondary" onclick="window.app.shareMantraById('${escapeHTML(mantra.id)}')">
+              💬 Share WhatsApp
+            </button>
+            <a href="#/mantras" class="btn btn-outline-secondary">← All Mantras</a>
+          </div>
         </div>
       </div>
     `;
