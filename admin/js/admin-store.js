@@ -347,7 +347,18 @@ import {
           this._setLoading("schedule", false);
           this._setError("schedule", null);
           if (!snapshot.empty) {
-            this.schedule = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            const hasLegacyStaleData = list.some(item =>
+              (item.time && (item.time.includes("4:30") || item.time.includes("04:30"))) ||
+              (item.name && item.name.includes("4:30"))
+            );
+            if (hasLegacyStaleData) {
+              this.schedule = [...DEFAULT_SCHEDULE];
+            } else {
+              this.schedule = list;
+            }
+          } else {
+            this.schedule = [...DEFAULT_SCHEDULE];
           }
           this._triggerViewRefresh("schedule");
         }, (err) => {
@@ -918,9 +929,7 @@ import {
       }
 
       // 3. Aarti Schedule
-      const schedList = (Array.isArray(data.schedule) && data.schedule.length > 0)
-        ? data.schedule
-        : DEFAULT_SCHEDULE;
+      const schedList = DEFAULT_SCHEDULE;
       for (const s of schedList) {
         await safeSet("aartiSchedule", s.id, {
           ...s,

@@ -198,8 +198,41 @@
                 description: data.description || data.desc || ""
               };
             });
-            list.sort((a, b) => (a.order || 0) - (b.order || 0));
-            this.schedule = list;
+
+            // Safeguard: Check if Firestore contains obsolete/stale legacy schedule (e.g. 04:30 AM)
+            const hasLegacyStaleData = list.some(item =>
+              (item.time && (item.time.includes("4:30") || item.time.includes("04:30"))) ||
+              (item.name && item.name.includes("4:30"))
+            );
+
+            if (hasLegacyStaleData) {
+              console.warn("[TempleStore] Firestore aartiSchedule contains stale 04:30 AM records; keeping official schedule from data.js");
+              if (window.TEMPLE_DATA?.schedule?.length > 0) {
+                this.schedule = [...window.TEMPLE_DATA.schedule];
+              }
+              this._notifyChange("schedule");
+              return;
+            }
+
+            // Enrich items with startHour/endHour/subName if missing
+            const enrichedList = list.map(item => {
+              if (typeof item.startHour !== "number" || typeof item.endHour !== "number") {
+                const staticMatch = (window.TEMPLE_DATA?.schedule || []).find(s => s.id === item.id || s.name === item.name);
+                if (staticMatch) {
+                  return {
+                    ...staticMatch,
+                    ...item,
+                    startHour: staticMatch.startHour,
+                    endHour: staticMatch.endHour,
+                    subName: item.subName || staticMatch.subName
+                  };
+                }
+              }
+              return item;
+            });
+
+            enrichedList.sort((a, b) => (a.order || 0) - (b.order || 0) || (a.startHour || 0) - (b.startHour || 0));
+            this.schedule = enrichedList;
             this._notifyChange("schedule");
           }
         }, (err) => {
