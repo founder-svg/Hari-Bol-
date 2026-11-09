@@ -147,16 +147,115 @@
 
   function closeMobileDrawer() {
     const drawer = document.getElementById('mobile-drawer');
+    const overlay = document.getElementById('drawer-overlay');
     const backdrop = document.getElementById('drawer-backdrop');
     if (drawer) drawer.classList.remove('open');
+    if (overlay) overlay.classList.remove('open');
     if (backdrop) backdrop.classList.remove('open');
   }
 
+  function openMobileDrawer() {
+    const drawer = document.getElementById('mobile-drawer');
+    const overlay = document.getElementById('drawer-overlay');
+    if (drawer) drawer.classList.add('open');
+    if (overlay) overlay.classList.add('open');
+  }
+
+  function setupNavDropdown() {
+    const dropdown = document.getElementById('nav-more-dropdown');
+    const btn = document.getElementById('nav-more-btn');
+    const menu = document.getElementById('nav-more-menu');
+    if (!dropdown || !btn || !menu) return;
+
+    function openDropdown() {
+      dropdown.classList.add('open');
+      btn.setAttribute('aria-expanded', 'true');
+    }
+
+    function closeDropdown() {
+      dropdown.classList.remove('open');
+      btn.setAttribute('aria-expanded', 'false');
+    }
+
+    function toggleDropdown(e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      if (dropdown.classList.contains('open')) {
+        closeDropdown();
+      } else {
+        openDropdown();
+      }
+    }
+
+    btn.addEventListener('click', toggleDropdown);
+
+    // Close on clicking any link inside dropdown
+    menu.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        closeDropdown();
+      });
+    });
+
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target)) {
+        closeDropdown();
+      }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && dropdown.classList.contains('open')) {
+        closeDropdown();
+        btn.focus();
+      }
+    });
+
+    // Hover support: sync aria-expanded
+    dropdown.addEventListener('mouseenter', () => {
+      btn.setAttribute('aria-expanded', 'true');
+    });
+    dropdown.addEventListener('mouseleave', () => {
+      if (!dropdown.classList.contains('open')) {
+        btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
   function setupGlobalUiEvents() {
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    if (mobileMenuBtn) {
+      mobileMenuBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        openMobileDrawer();
+      });
+    }
+
+    const drawerCloseBtn = document.getElementById('drawer-close-btn');
+    if (drawerCloseBtn) {
+      drawerCloseBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeMobileDrawer();
+      });
+    }
+
+    const overlay = document.getElementById('drawer-overlay');
+    if (overlay) {
+      overlay.addEventListener('click', closeMobileDrawer);
+    }
     const backdrop = document.getElementById('drawer-backdrop');
     if (backdrop) {
       backdrop.addEventListener('click', closeMobileDrawer);
     }
+
+    document.querySelectorAll('.drawer-nav-link').forEach(link => {
+      link.addEventListener('click', closeMobileDrawer);
+    });
+
+    // Initialize "More ▾" dropdown interactions
+    setupNavDropdown();
   }
 
   // Sync Announcement Banner and YouTube Live Stream Bar safely
@@ -483,14 +582,29 @@
   }
 
   function updateActiveNavLinks(currentHash) {
-    document.querySelectorAll('.nav-link, .drawer-nav-link, .mobile-bottom-link').forEach(link => {
+    let moreDropdownHasActive = false;
+    document.querySelectorAll('.nav-link, .drawer-nav-link, .mobile-bottom-link, .dropdown-item').forEach(link => {
+      if (link.id === 'nav-more-btn') return;
       const href = link.getAttribute('href');
-      if (href && (href === currentHash || (href !== '#/' && currentHash.startsWith(href)))) {
+      const isActive = href && (href === currentHash || (href !== '#/' && currentHash.startsWith(href)));
+      if (isActive) {
         link.classList.add('active');
+        if (link.closest('#nav-more-menu')) {
+          moreDropdownHasActive = true;
+        }
       } else {
         link.classList.remove('active');
       }
     });
+
+    const moreBtn = document.getElementById('nav-more-btn');
+    if (moreBtn) {
+      if (moreDropdownHasActive) {
+        moreBtn.classList.add('active');
+      } else {
+        moreBtn.classList.remove('active');
+      }
+    }
   }
 
   // =========================================================================
@@ -645,46 +759,46 @@
       <!-- TODAY'S DARSHAN SPOTLIGHT -->
       <section class="main-container">
         <div class="darshan-spotlight-card" style="border: 2px solid var(--gold-400); box-shadow: 0 16px 40px rgba(62,8,18,0.12); border-radius: 24px; overflow: hidden;">
-          <div class="darshan-image-container" style="position: relative; cursor: pointer;" onclick="window.app.openLightbox('${todayDarshanImg}', '${todayDarshan.title || 'Sacred Darshan'}')">
-            <img src="${todayDarshanImg}" alt="${todayDarshan.title || 'Sacred Darshan'}">
+          <div class="darshan-image-container" style="position: relative; cursor: pointer;" onclick="window.app.openLightbox('${todayDarshanImg}', '${escapeHTML(todayDarshan.title || 'Sacred Darshan').replace(/'/g, "\\'")}')">
+            <img src="${todayDarshanImg}" alt="${escapeHTML(todayDarshan.title || 'Sacred Darshan')}">
             <div class="darshan-overlay-badge" style="background: rgba(62,8,18,0.85); border: 1px solid var(--gold-500); backdrop-filter: blur(4px);">
-              <span>✨</span> ${todayDarshan.tag || "Today's Sacred Darshan"}
+              <span>✨</span> ${escapeHTML(todayDarshan.tag || "Today's Sacred Darshan")}
             </div>
           </div>
           <div class="darshan-details-pane" style="background: linear-gradient(135deg, #FFFDF9 0%, #FFF9F0 100%);">
             <span class="section-subtitle">Divine Appearance</span>
-            <h2 class="darshan-title" style="font-family: var(--font-serif); color: var(--maroon-900); font-size: 2rem;">${todayDarshan.title}</h2>
-            <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.6;">${todayDarshan.message}</p>
+            <h2 class="darshan-title" style="font-family: var(--font-serif); color: var(--maroon-900); font-size: 2rem;">${escapeHTML(todayDarshan.title || '')}</h2>
+            <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.6;">${escapeHTML(todayDarshan.message || todayDarshan.quote || '')}</p>
             
             <ul class="darshan-meta-list" style="margin: 16px 0;">
               <li class="darshan-meta-item">
                 <span class="darshan-meta-icon">👑</span>
                 <div>
-                  <strong>Deities:</strong> ${todayDarshan.deity}
+                  <strong>Deities:</strong> ${escapeHTML(todayDarshan.deity || '')}
                 </div>
               </li>
               <li class="darshan-meta-item">
                 <span class="darshan-meta-icon">🌺</span>
                 <div>
-                  <strong>Alankara:</strong> ${todayDarshan.alankara || todayDarshan.attire}
+                  <strong>Alankara:</strong> ${escapeHTML(todayDarshan.alankara || todayDarshan.attire || '')}
                 </div>
               </li>
               <li class="darshan-meta-item">
                 <span class="darshan-meta-icon">📅</span>
                 <div>
-                  <strong>Date:</strong> ${todayDarshan.date}
+                  <strong>Date:</strong> ${escapeHTML(todayDarshan.date || '')}
                 </div>
               </li>
             </ul>
 
             <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-              <button onclick="window.app.openLightbox('${todayDarshan.image || todayDarshan.imageUrl}', '${todayDarshan.title}')" class="btn btn-primary animate-pulse-gold">
+              <button onclick="window.app.openLightbox('${todayDarshanImg}', '${escapeHTML(todayDarshan.title || 'Sacred Darshan').replace(/'/g, "\\'")}')" class="btn btn-primary animate-pulse-gold">
                 <span>🔍</span> High-Res Zoom
               </button>
               <a href="#/darshan" class="btn btn-secondary">
                 <span>🖼️</span> View Full Gallery
               </a>
-              <button onclick="window.app.shareDarshanWhatsApp('${todayDarshan.title}', '${todayDarshan.date}')" class="btn btn-secondary" title="Share Darshan on WhatsApp">
+              <button onclick="window.app.shareDarshanWhatsApp('${escapeHTML(todayDarshan.title || '').replace(/'/g, "\\'")}', '${escapeHTML(todayDarshan.date || '').replace(/'/g, "\\'")}')" class="btn btn-secondary" title="Share Darshan on WhatsApp">
                 <span>💬</span> Share
               </button>
             </div>
@@ -702,24 +816,29 @@
             </h3>
           </div>
           <a href="#/darshan" class="btn btn-gold btn-sm" style="box-shadow: 0 4px 12px rgba(212,175,55,0.3);">
-            <span>🖼️</span> View Full Gallery (${data.darshanGallery.length}) →
+            <span>🖼️</span> View Full Gallery (${gallery.length}) →
           </a>
         </div>
 
         <div class="home-gallery-scroll-container">
-          ${data.darshanGallery.map(item => `
-            <div class="home-gallery-card-item" onclick="window.app.openLightbox('${item.image || item.imageUrl}', '${item.title}')">
-              <img src="${item.image || item.imageUrl}" alt="${item.title}" loading="lazy">
+          ${gallery.map(item => {
+            const itemImg = item.image || item.imageUrl || 'assets/images/darshan_today.jpg';
+            const itemTitle = escapeHTML(item.title || 'Deity Darshan');
+            const itemTitleJs = itemTitle.replace(/'/g, "\\'");
+            return `
+            <div class="home-gallery-card-item" onclick="window.app.openLightbox('${itemImg}', '${itemTitleJs}')">
+              <img src="${itemImg}" alt="${itemTitle}" loading="lazy">
               <div class="home-gallery-card-info">
                 <span style="background: rgba(212,175,55,0.85); color: #3E0812; font-weight: 800; font-size: 0.68rem; padding: 2px 8px; border-radius: 10px; display: inline-block; margin-bottom: 4px;">
-                  ${item.tag || 'Deity Darshan'}
+                  ${escapeHTML(item.tag || 'Deity Darshan')}
                 </span>
                 <div style="font-family: var(--font-serif); font-weight: 700; font-size: 0.95rem; line-height: 1.2;">
-                  ${item.title}
+                  ${itemTitle}
                 </div>
               </div>
             </div>
-          `).join('')}
+          `;
+          }).join('')}
         </div>
       </section>
 
@@ -1088,28 +1207,28 @@
         <div class="card" style="margin-bottom: 48px; border: 2px solid var(--gold-500); overflow: hidden;">
           <div class="darshan-featured-card-grid">
             <div style="position: relative; min-height: 520px; max-height: 640px; padding: 20px; background: radial-gradient(circle, #22040A 0%, #0A0103 100%); overflow: hidden; display: flex; align-items: center; justify-content: center;">
-              <img src="${todayImage}" alt="${today.title || 'Sacred Darshan'}" style="max-height: 540px; width: 100%; object-fit: contain; display: block; margin: 0 auto;">
-              <button onclick="window.app.openLightbox('${todayImage}', '${today.title || 'Sacred Darshan'}')" class="btn btn-gold btn-sm" style="position: absolute; bottom: 16px; right: 16px;">
+              <img src="${todayImage}" alt="${escapeHTML(today.title || 'Sacred Darshan')}" style="max-height: 540px; width: 100%; object-fit: contain; display: block; margin: 0 auto;">
+              <button onclick="window.app.openLightbox('${todayImage}', '${escapeHTML(today.title || 'Sacred Darshan').replace(/'/g, "\\'")}')" class="btn btn-gold btn-sm" style="position: absolute; bottom: 16px; right: 16px;">
                 <span>🔍</span> Zoom Fullscreen
               </button>
             </div>
             <div style="padding: 36px; display: flex; flex-direction: column; justify-content: center; background: var(--bg-card);">
-              <span class="sacred-badge maroon" style="margin-bottom: 8px;">${today.date || ''}</span>
+              <span class="sacred-badge maroon" style="margin-bottom: 8px;">${escapeHTML(today.date || '')}</span>
               <h2 style="font-family: var(--font-serif); font-size: 2rem; color: var(--maroon-900); margin-bottom: 12px;">
-                ${today.title || ''}
+                ${escapeHTML(today.title || '')}
               </h2>
               <p style="color: var(--text-muted); font-size: 1rem; line-height: 1.7; margin-bottom: 20px;">
-                ${today.message || today.quote || ''}
+                ${escapeHTML(today.message || today.quote || '')}
               </p>
               <div style="background: var(--saffron-50); border-left: 4px solid var(--saffron-800); padding: 14px; border-radius: var(--radius-sm); margin-bottom: 24px;">
                 <strong style="color: var(--maroon-900); display: block; font-size: 0.9rem;">Deity Attire & Shringar:</strong>
-                <span style="font-size: 0.92rem; color: var(--text-main);">${today.attire || today.alankara || ''}</span>
+                <span style="font-size: 0.92rem; color: var(--text-main);">${escapeHTML(today.attire || today.alankara || '')}</span>
               </div>
               <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                <button onclick="window.app.downloadImage('${todayImage}', 'Darshan-${today.date || 'today'}.jpg')" class="btn btn-primary">
+                <button onclick="window.app.downloadImage('${todayImage}', 'Darshan-${escapeHTML(today.date || 'today').replace(/[^a-zA-Z0-9_-]/g, '_')}.jpg')" class="btn btn-primary">
                   <span>⬇️</span> Download Photo
                 </button>
-                <button onclick="window.app.shareDarshanWhatsApp('${today.title || ''}', '${today.date || ''}')" class="btn btn-secondary">
+                <button onclick="window.app.shareDarshanWhatsApp('${escapeHTML(today.title || '').replace(/'/g, "\\'")}', '${escapeHTML(today.date || '').replace(/'/g, "\\'")}')" class="btn btn-secondary">
                   <span>💬</span> WhatsApp Status
                 </button>
                 <button onclick="window.app.openCheckout('Deity Shringar & Royal Poshak Seva', 2501)" class="btn btn-gold">
@@ -1120,7 +1239,7 @@
           </div>
         </div>
 
-                <!-- Darshan Gallery & Archives -->
+        <!-- Darshan Gallery & Archives -->
         <div class="section-header">
           <span class="section-subtitle">Transcendental Archives</span>
           <h2 class="section-title">Past Darshan Gallery</h2>
@@ -1130,25 +1249,27 @@
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 28px; margin-bottom: 64px;">
           ${gallery.map(item => {
             const itemImage = item.image || item.imageUrl || 'assets/images/darshan_today.jpg';
+            const itemTitle = escapeHTML(item.title || '');
+            const itemDate = escapeHTML(item.date || '');
             return `
             <div class="card" style="overflow: hidden;">
               <div class="card-media-portrait ${item.id && (item.id.includes('face') || item.id.includes('radharani')) ? '' : 'contain'}">
-                <img src="${itemImage}" alt="${item.title || 'Deity Darshan'}" class="${item.id && (item.id.includes('face') || item.id.includes('radharani')) ? 'idol-img-top' : 'idol-img-contain'}">
+                <img src="${itemImage}" alt="${itemTitle || 'Deity Darshan'}" class="${item.id && (item.id.includes('face') || item.id.includes('radharani')) ? 'idol-img-top' : 'idol-img-contain'}">
                 <span style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.75); color: #FFF; padding: 4px 10px; border-radius: var(--radius-full); font-size: 0.75rem; border: 1px solid var(--gold-500); backdrop-filter: blur(4px);">
-                  📅 ${item.date || ''}
+                  📅 ${itemDate}
                 </span>
               </div>
               <div style="padding: 20px;">
                 <h3 style="font-family: var(--font-serif); font-size: 1.15rem; color: var(--maroon-900); margin-bottom: 6px;">
-                  ${item.title || ''}
+                  ${itemTitle}
                 </h3>
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">${item.deity || ''}</p>
-                <button onclick="window.app.openLightbox('${itemImage}', '${item.title || ''} (${item.date || ''})')" class="btn btn-sm btn-secondary" style="width: 100%;">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">${escapeHTML(item.deity || '')}</p>
+                <button onclick="window.app.openLightbox('${itemImage}', '${(itemTitle + ' (' + itemDate + ')').replace(/'/g, "\\'")}')" class="btn btn-sm btn-secondary" style="width: 100%;">
                   <span>🔍</span> View High Resolution
                 </button>
               </div>
             </div>
-          `}).join('')}
+          `;}).join('')}
         </div>
 
         <!-- Aarti Schedule Table -->
@@ -3177,16 +3298,53 @@ tvat-kṛpāpekṣako nityam ity
   // Lightbox Modal
   window.app.openLightbox = function(imageUrl, title) {
     if (!imageLightboxModalElem) return;
+    const cleanImg = imageUrl || 'assets/images/darshan_today.jpg';
+    const cleanTitle = escapeHTML(title || 'Sacred Darshan');
     imageLightboxModalElem.innerHTML = `
       <div class="modal-card" style="max-width: 900px; background: #0A0A0A; color: #FFF; padding: 20px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-          <h3 style="font-family: var(--font-serif); color: var(--gold-300);">${title}</h3>
+          <h3 style="font-family: var(--font-serif); color: var(--gold-300);">${cleanTitle}</h3>
           <button onclick="window.app.closeModal('lightbox-modal')" class="modal-close-btn" style="color: #FFF;">✕</button>
         </div>
-        <img src="${imageUrl}" alt="${title}" style="max-height: 75vh; width: 100%; object-fit: contain; margin: 0 auto; border-radius: var(--radius-sm);">
+        <img src="${cleanImg}" alt="${cleanTitle}" style="max-height: 75vh; width: 100%; object-fit: contain; margin: 0 auto; border-radius: var(--radius-sm);">
       </div>
     `;
     imageLightboxModalElem.classList.add('open');
+  };
+
+  // Image Download Helper (Supports data: URLs, relative assets, and remote URLs)
+  window.app.downloadImage = async function(imageUrl, filename) {
+    if (!imageUrl) return;
+    const name = filename || 'Darshan.jpg';
+    try {
+      if (imageUrl.startsWith('data:') || imageUrl.startsWith('assets/') || imageUrl.startsWith('.')) {
+        const a = document.createElement('a');
+        a.href = imageUrl;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } else {
+        const res = await fetch(imageUrl);
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      }
+    } catch (e) {
+      const a = document.createElement('a');
+      a.href = imageUrl;
+      a.download = name;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
   };
 
   // Checkout Payment Modal (Delegates to enriched Donation & Contact Popup)

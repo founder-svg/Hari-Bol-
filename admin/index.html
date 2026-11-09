@@ -620,12 +620,15 @@
             <input type="file" id="darshan-file-input" class="form-input" accept="image/*,video/*" />
             <small style="color:var(--text-muted); font-size:0.8rem; margin-top:0.25rem; display:block;">Or paste
               image/video direct URL below</small>
+            <div id="darshan-file-msg" style="margin-top:0.35rem; font-size:0.82rem; display:none;"></div>
           </div>
 
           <div class="form-group">
             <label class="form-label">Image or Video URL</label>
-            <input type="url" id="darshan-img-url" class="form-input"
-              placeholder="https://images.unsplash.com/photo-..." />
+            <input type="text" id="darshan-img-url" class="form-input"
+              placeholder="https://... or assets/..." />
+            <div id="darshan-img-preview-box" style="margin-top:0.5rem; display:none;"></div>
+            <div id="darshan-img-error" style="color:#ef4444; font-size:0.82rem; margin-top:0.35rem; display:none;"></div>
           </div>
 
           <div class="form-group">
@@ -732,8 +735,16 @@
           <input type="text" id="event-speaker" class="form-input" placeholder="e.g. HH Radhanath Swami" />
         </div>
         <div class="form-group">
+          <label class="form-label">Upload Poster Image</label>
+          <input type="file" id="event-file-input" class="form-input" accept="image/*,video/*" />
+          <small style="color:var(--text-muted); font-size:0.8rem; margin-top:0.25rem; display:block;">Or paste image direct URL below</small>
+          <div id="event-file-msg" style="margin-top:0.35rem; font-size:0.82rem; display:none;"></div>
+        </div>
+        <div class="form-group">
           <label class="form-label">Poster Image / File URL</label>
-          <input type="url" id="event-img" class="form-input" placeholder="https://..." required />
+          <input type="text" id="event-img" class="form-input" placeholder="https://... or assets/..." required />
+          <div id="event-img-preview-box" style="margin-top:0.5rem; display:none;"></div>
+          <div id="event-img-error" style="color:#ef4444; font-size:0.82rem; margin-top:0.35rem; display:none;"></div>
         </div>
         <div class="form-group">
           <label class="form-label">Description</label>
@@ -837,7 +848,8 @@
         </div>
         <div class="form-group">
           <label class="form-label">Audio File URL (MP3)</label>
-          <input type="url" id="aud-url" class="form-input" placeholder="https://..." required />
+          <input type="text" id="aud-url" class="form-input" placeholder="https://... or assets/..." required />
+          <div id="aud-url-error" style="color:#ef4444; font-size:0.82rem; margin-top:0.35rem; display:none;"></div>
         </div>
         <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
           <button type="button" class="btn btn-secondary"

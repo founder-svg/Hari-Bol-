@@ -125,18 +125,29 @@
       <nav class="nav-desktop" aria-label="Primary Navigation">
         <a href="#/" class="nav-link active">Home</a>
         <a href="#/darshan" class="nav-link">Darshan</a>
-        <a href="#/classes" class="nav-link">Join Classes</a>
-        <a href="#/brahma-samhita" onclick="window.app.onBrahmaSamhitaNavClick(event)" class="nav-link">Sri Brahma
-          Samhita</a>
-        <a href="#/volunteer" class="nav-link">Join Volunteer</a>
         <a href="#/events" class="nav-link">Events & Festivals</a>
-        <a href="#/spirituality" class="nav-link">Spirituality</a>
-        <a href="#/temple" class="nav-link">Temple</a>
-        <a href="#/visit" class="nav-link">Plan Visit</a>
-        <a href="#/community" class="nav-link">Community</a>
         <a href="#/seva" class="nav-link">Seva</a>
-        <a href="#/sudhama-sewak" class="nav-link">🤝 Sudhama Sewak</a>
+        <a href="#/visit" class="nav-link">Plan Visit</a>
         <a href="#/contact" class="nav-link">Contact</a>
+
+        <!-- More Dropdown -->
+        <div class="nav-dropdown" id="nav-more-dropdown">
+          <button type="button" class="nav-link nav-dropdown-btn" id="nav-more-btn" aria-haspopup="true" aria-expanded="false" aria-controls="nav-more-menu">
+            <span>More</span>
+            <svg class="dropdown-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+              <path d="M6 9l6 6 6-6"></path>
+            </svg>
+          </button>
+          <div class="nav-dropdown-menu" id="nav-more-menu" role="menu" aria-labelledby="nav-more-btn">
+            <a href="#/classes" class="dropdown-item" role="menuitem">🎓 Join Classes</a>
+            <a href="#/brahma-samhita" onclick="window.app.onBrahmaSamhitaNavClick(event)" class="dropdown-item" role="menuitem">📜 Sri Brahma Samhita</a>
+            <a href="#/volunteer" class="dropdown-item" role="menuitem">🤝 Join Volunteer</a>
+            <a href="#/spirituality" class="dropdown-item" role="menuitem">🪷 Spirituality</a>
+            <a href="#/temple" class="dropdown-item" role="menuitem">🏛️ Temple</a>
+            <a href="#/community" class="dropdown-item" role="menuitem">👥 Community</a>
+            <a href="#/sudhama-sewak" class="dropdown-item" role="menuitem">🤝 Sudhama Sewak</a>
+          </div>
+        </div>
       </nav>
 
       <!-- Header Actions -->
@@ -193,22 +204,23 @@
     <ul class="drawer-nav-list">
       <li><a href="#/" class="drawer-nav-link">🏠 Home</a></li>
       <li><a href="#/darshan" class="drawer-nav-link">🪔 Today's Darshan</a></li>
+      <li><a href="#/events" class="drawer-nav-link">🎉 Events & Festivals</a></li>
+      <li><a href="#/seva" class="drawer-nav-link">🌸 Sacred Seva Catalog</a></li>
+      <li><a href="#/visit" class="drawer-nav-link">🚗 Plan Your Visit</a></li>
+      <li><a href="#/contact" class="drawer-nav-link">📞 Contact & Location</a></li>
       <li><a href="#/classes" class="drawer-nav-link">🎓 Join Our Classes</a></li>
-      <li><a href="#/brahma-samhita" onclick="window.app.onBrahmaSamhitaNavClick(event)" class="drawer-nav-link">📜 Join
-          Sri Brahma Samhita</a></li>
-      <li><a href="#/events" class="drawer-nav-link">🎉 Festivals & Events</a></li>
+      <li><a href="#/brahma-samhita" onclick="window.app.onBrahmaSamhitaNavClick(event)" class="drawer-nav-link">📜 Join Sri Brahma Samhita</a></li>
+      <li><a href="#/volunteer" class="drawer-nav-link">🤝 Join Volunteer</a></li>
+      <li><a href="#/spirituality" class="drawer-nav-link">🪷 Spirituality</a></li>
+      <li><a href="#/temple" class="drawer-nav-link">🏛️ About Temple & Deities</a></li>
+      <li><a href="#/community" class="drawer-nav-link">👥 Youth & Children Forum</a></li>
+      <li><a href="#/sudhama-sewak" class="drawer-nav-link">🤝 Sudhama Sewak</a></li>
       <li><a href="#/mantras" class="drawer-nav-link">🪷 Mantras & Sacred Shlokas</a></li>
       <li><a href="#/bhagavad-gita" class="drawer-nav-link">📖 Bhagavad Gita As It Is</a></li>
       <li><a href="#/kirtans" class="drawer-nav-link">🎶 Kirtan & Bhajans</a></li>
       <li><a href="#/lectures" class="drawer-nav-link">🎙️ Spiritual Lectures</a></li>
-      <li><a href="#/temple" class="drawer-nav-link">🏛️ About Temple & Deities</a></li>
       <li><a href="#/timings" class="drawer-nav-link">⏰ Daily Aarti Timings</a></li>
-      <li><a href="#/visit" class="drawer-nav-link">🚗 Plan Your Visit</a></li>
-      <li><a href="#/community" class="drawer-nav-link">👥 Youth & Children Forum</a></li>
-      <li><a href="#/volunteer" class="drawer-nav-link">🤝 Volunteer Seva</a></li>
-      <li><a href="#/seva" class="drawer-nav-link">🌸 Sacred Seva Catalog</a></li>
       <li><a href="#/media" class="drawer-nav-link">🖼️ Photos & Media</a></li>
-      <li><a href="#/contact" class="drawer-nav-link">📞 Contact & Location</a></li>
     </ul>
 
     <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border-color);">

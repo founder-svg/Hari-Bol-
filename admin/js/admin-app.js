@@ -159,21 +159,22 @@
         });
       }
 
-      // 6. Image File Selection helper (Extracts repo-relative path or URL)
-      const fileImgInp = document.getElementById("darshan-file-input");
-      if (fileImgInp) {
-        fileImgInp.addEventListener("change", (e) => {
-          const file = e.target.files[0];
-          if (file) {
-            // Note: Recommend using assets/images path or public URL for Firestore storage
-            const urlInput = document.getElementById("darshan-img-url");
-            if (urlInput && !urlInput.value) {
-              urlInput.value = `assets/images/${file.name}`;
-            }
-            this.showToast(`Selected file: ${file.name}. Ensure relative path or URL is correct.`, "info");
-          }
-        });
-      }
+      // 6. Setup Media & Image Upload Handling for Modals
+      this.setupMediaFileInput({
+        fileInputId: "darshan-file-input",
+        urlInputId: "darshan-img-url",
+        previewBoxId: "darshan-img-preview-box",
+        errorBoxId: "darshan-img-error",
+        msgBoxId: "darshan-file-msg"
+      });
+
+      this.setupMediaFileInput({
+        fileInputId: "event-file-input",
+        urlInputId: "event-img",
+        previewBoxId: "event-img-preview-box",
+        errorBoxId: "event-img-error",
+        msgBoxId: "event-file-msg"
+      });
     }
 
     switchView(viewName) {
@@ -454,6 +455,16 @@
           return;
         }
 
+        if (!this.isValidMediaUrl(imageUrl)) {
+          const errEl = document.getElementById("darshan-img-error");
+          if (errEl) {
+            errEl.textContent = "Please enter a valid URL (starting with https://, assets/, or select an image file).";
+            errEl.style.display = "block";
+          }
+          this.showToast("Please enter a valid image URL or upload an image file.", "warning");
+          return;
+        }
+
         try {
           await this.store.addOrUpdateDarshan({ imageUrl, deity, quote, contentType, active: true, targetPlatform });
           this.showToast(`Media post published to Firestore for ${targetPlatform.toUpperCase()}!`, "success");
@@ -529,9 +540,9 @@
       document.getElementById("event-time").value = event.time;
       document.getElementById("event-location").value = event.location;
       document.getElementById("event-speaker").value = event.speaker || "";
-      document.getElementById("event-img").value = event.imageUrl;
+      document.getElementById("event-img").value = event.imageUrl || event.image || "";
       document.getElementById("event-target").value = event.targetPlatform || "both";
-      document.getElementById("event-desc").value = event.description;
+      document.getElementById("event-desc").value = event.description || event.shortDesc || "";
 
       this.openModal('event-modal');
     }
@@ -565,9 +576,19 @@
       const time = document.getElementById("event-time").value;
       const location = document.getElementById("event-location").value;
       const speaker = document.getElementById("event-speaker").value;
-      const imageUrl = document.getElementById("event-img").value;
+      const imageUrl = document.getElementById("event-img").value.trim();
       const targetPlatform = document.getElementById("event-target").value;
       const description = document.getElementById("event-desc").value;
+
+      if (!this.isValidMediaUrl(imageUrl)) {
+        const errEl = document.getElementById("event-img-error");
+        if (errEl) {
+          errEl.textContent = "Please enter a valid URL (starting with https://, assets/, or select an image file).";
+          errEl.style.display = "block";
+        }
+        this.showToast("Please enter a valid image URL or upload an image file.", "warning");
+        return;
+      }
 
       try {
         await this.store.saveEvent({ id, title, category, date, time, location, speaker, imageUrl, targetPlatform, description });
@@ -873,7 +894,17 @@
       const artist = document.getElementById("aud-artist").value;
       const category = document.getElementById("aud-category").value;
       const targetPlatform = document.getElementById("aud-target").value;
-      const url = document.getElementById("aud-url").value;
+      const url = document.getElementById("aud-url").value.trim();
+
+      if (!this.isValidMediaUrl(url)) {
+        const errEl = document.getElementById("aud-url-error");
+        if (errEl) {
+          errEl.textContent = "Please enter a valid URL (starting with https:// or assets/).";
+          errEl.style.display = "block";
+        }
+        this.showToast("Please enter a valid audio URL.", "warning");
+        return;
+      }
 
       try {
         await this.store.saveMediaAudio({ title, artist, category, targetPlatform, url, duration: "30:00" });
@@ -1003,12 +1034,243 @@
         return;
       }
       const modal = document.getElementById(id);
-      if (modal) modal.classList.add("open");
+      if (modal) {
+        modal.classList.add("open");
+        if (id === 'event-modal') {
+          const urlVal = (document.getElementById('event-img')?.value || '').trim();
+          const prevBox = document.getElementById('event-img-preview-box');
+          if (prevBox) {
+            if (urlVal && this.isValidMediaUrl(urlVal)) {
+              prevBox.style.display = 'flex';
+              prevBox.style.alignItems = 'center';
+              prevBox.style.gap = '0.75rem';
+              const isData = urlVal.startsWith('data:');
+              prevBox.innerHTML = `
+                <img src="${urlVal}" alt="Preview" style="width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--border);" />
+                <span style="font-size:0.8rem; color:var(--text-muted);">${isData ? 'Optimized Image' : 'Image URL'}</span>
+              `;
+            } else {
+              prevBox.style.display = 'none';
+              prevBox.innerHTML = '';
+            }
+          }
+          const errEl = document.getElementById('event-img-error');
+          if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+        } else if (id === 'darshan-modal') {
+          const urlVal = (document.getElementById('darshan-img-url')?.value || '').trim();
+          const prevBox = document.getElementById('darshan-img-preview-box');
+          if (prevBox) {
+            if (urlVal && this.isValidMediaUrl(urlVal)) {
+              prevBox.style.display = 'flex';
+              prevBox.style.alignItems = 'center';
+              prevBox.style.gap = '0.75rem';
+              const isData = urlVal.startsWith('data:');
+              prevBox.innerHTML = `
+                <img src="${urlVal}" alt="Preview" style="width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--border);" />
+                <span style="font-size:0.8rem; color:var(--text-muted);">${isData ? 'Optimized Image' : 'Image URL'}</span>
+              `;
+            } else {
+              prevBox.style.display = 'none';
+              prevBox.innerHTML = '';
+            }
+          }
+          const errEl = document.getElementById('darshan-img-error');
+          if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+        }
+      }
     }
 
     closeModal(id) {
       const modal = document.getElementById(id);
-      if (modal) modal.classList.remove("open");
+      if (modal) {
+        modal.classList.remove("open");
+        const form = modal.querySelector("form");
+        if (form) form.reset();
+        const prevBoxes = modal.querySelectorAll("[id$='-preview-box']");
+        prevBoxes.forEach(p => { p.style.display = 'none'; p.innerHTML = ''; });
+        const errBoxes = modal.querySelectorAll("[id$='-error'], [id$='-msg']");
+        errBoxes.forEach(e => { e.style.display = 'none'; e.textContent = ''; });
+      }
+    }
+
+    isValidMediaUrl(val) {
+      if (!val || typeof val !== 'string') return false;
+      const s = val.trim();
+      if (s.startsWith('https://') || s.startsWith('http://')) return true;
+      if (s.startsWith('assets/') || s.startsWith('./assets/') || s.startsWith('/assets/')) return true;
+      if (s.startsWith('data:image/')) return true;
+      return false;
+    }
+
+    processImageFile(file) {
+      return new Promise((resolve, reject) => {
+        if (!file || !file.type.startsWith('image/')) {
+          return reject(new Error('Selected file is not a valid image.'));
+        }
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Failed to read image file.'));
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => reject(new Error('Unable to decode image file.'));
+          img.onload = () => {
+            try {
+              const origW = img.naturalWidth || img.width;
+              const origH = img.naturalHeight || img.height;
+
+              const renderCanvas = (maxDim, q) => {
+                let w = origW;
+                let h = origH;
+                if (w > maxDim || h > maxDim) {
+                  if (w >= h) {
+                    h = Math.round((h * maxDim) / w);
+                    w = maxDim;
+                  } else {
+                    w = Math.round((w * maxDim) / h);
+                    h = maxDim;
+                  }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, w);
+                canvas.height = Math.max(1, h);
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                return canvas.toDataURL('image/jpeg', q);
+              };
+
+              // Step 1: max side 1280px at 0.8 quality
+              let dataUrl = renderCanvas(1280, 0.8);
+
+              // Step 2: if > 700 KB, lower quality step by step down to 0.5
+              const qualities = [0.7, 0.6, 0.5];
+              for (let i = 0; i < qualities.length && dataUrl.length > 700 * 1024; i++) {
+                dataUrl = renderCanvas(1280, qualities[i]);
+              }
+
+              // Step 3: if still > 700 KB, shrink to 960px
+              if (dataUrl.length > 700 * 1024) {
+                const shrinkQualities = [0.8, 0.7, 0.6, 0.5];
+                for (let i = 0; i < shrinkQualities.length; i++) {
+                  dataUrl = renderCanvas(960, shrinkQualities[i]);
+                  if (dataUrl.length <= 700 * 1024) break;
+                }
+              }
+
+              // Step 4: if still cannot fit under ~900 KB, reject
+              if (dataUrl.length > 900 * 1024) {
+                return reject(new Error(`Image size (${Math.round(dataUrl.length / 1024)} KB) exceeds safe limit (~900 KB). Please select a smaller image or use an external URL.`));
+              }
+
+              const sizeKb = Math.round(dataUrl.length / 1024);
+              resolve({ dataUrl, sizeKb });
+            } catch (err) {
+              reject(err);
+            }
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    setupMediaFileInput({ fileInputId, urlInputId, previewBoxId, errorBoxId, msgBoxId }) {
+      const fileInput = document.getElementById(fileInputId);
+      const urlInput = document.getElementById(urlInputId);
+      const previewBox = document.getElementById(previewBoxId);
+      const errorBox = document.getElementById(errorBoxId);
+      const msgBox = msgBoxId ? document.getElementById(msgBoxId) : null;
+
+      if (!fileInput || !urlInput) return;
+
+      const clearError = () => {
+        if (errorBox) { errorBox.textContent = ''; errorBox.style.display = 'none'; }
+        if (msgBox) { msgBox.textContent = ''; msgBox.style.display = 'none'; }
+      };
+
+      const showError = (msg) => {
+        if (errorBox) {
+          errorBox.textContent = msg;
+          errorBox.style.display = 'block';
+        }
+      };
+
+      const updatePreview = (url, label) => {
+        if (!previewBox) return;
+        if (!url) {
+          previewBox.style.display = 'none';
+          previewBox.innerHTML = '';
+          return;
+        }
+        previewBox.style.display = 'flex';
+        previewBox.style.alignItems = 'center';
+        previewBox.style.gap = '0.75rem';
+        previewBox.innerHTML = `
+          <img src="${url}" alt="Preview" style="width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid var(--border);" />
+          <div>
+            <div style="font-size:0.82rem; font-weight:600; color:var(--text-main);">Image Ready</div>
+            <div style="font-size:0.75rem; color:var(--text-muted);">${label || ''}</div>
+          </div>
+        `;
+      };
+
+      // Input listener on URL field
+      urlInput.addEventListener('input', () => {
+        clearError();
+        const val = urlInput.value.trim();
+        if (!val) {
+          updatePreview('');
+          return;
+        }
+        if (this.isValidMediaUrl(val)) {
+          if (val.startsWith('data:image/') || val.match(/\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i) || val.includes('unsplash.com') || val.includes('imgur.com')) {
+            updatePreview(val, val.startsWith('data:') ? 'Optimized Image' : 'Direct URL');
+          } else {
+            updatePreview('');
+          }
+        } else {
+          showError('Please enter a valid URL (starting with https://, assets/, or select an image file).');
+        }
+      });
+
+      // Change listener on local file input
+      fileInput.addEventListener('change', async (e) => {
+        clearError();
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+
+        // Video check
+        const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv|m4v)$/i.test(file.name);
+        if (isVideo) {
+          fileInput.value = '';
+          const videoMsg = "Videos cannot be uploaded here. Upload to YouTube (unlisted) or any host and paste the link in the URL field.";
+          showError(videoMsg);
+          this.showToast(videoMsg, "warning");
+          alert(videoMsg);
+          return;
+        }
+
+        // Image check
+        if (!file.type.startsWith('image/')) {
+          fileInput.value = '';
+          showError('Selected file is not an image. Please choose an image or enter a URL.');
+          this.showToast('Selected file is not an image.', 'warning');
+          return;
+        }
+
+        try {
+          this.showToast(`Processing & optimizing ${file.name}...`, 'info');
+          const result = await this.processImageFile(file);
+          urlInput.value = result.dataUrl;
+          clearError();
+          updatePreview(result.dataUrl, `Optimized: ${result.sizeKb} KB`);
+          this.showToast(`Image ready! Compressed to ${result.sizeKb} KB`, 'success');
+        } catch (err) {
+          fileInput.value = '';
+          showError(err.message || 'Failed to process image.');
+          this.showToast(err.message || 'Image processing failed.', 'danger');
+        }
+      });
     }
 
     showToast(message, type = "info") {
