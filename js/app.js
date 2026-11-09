@@ -635,10 +635,10 @@
     const currentHour = now.getHours() + now.getMinutes() / 60;
     const schedule = window.templeStore.getSchedule();
 
-    // Morning Session: 04:30 (4.5) to 13:00 (13.0)
-    // Evening Session: 16:30 (16.5) to 20:30 (20.5)
-    const isMorningOpen = currentHour >= 4.5 && currentHour <= 13.0;
-    const isEveningOpen = currentHour >= 16.5 && currentHour <= 20.5;
+    // Morning Session: 05:00 (5.0) to 13:00 (13.0)
+    // Evening Session: 16:45 (16.75) to 20:45 (20.75)
+    const isMorningOpen = currentHour >= 5.0 && currentHour < 13.0;
+    const isEveningOpen = currentHour >= 16.75 && currentHour <= 20.75;
     const isOpen = isMorningOpen || isEveningOpen;
 
     let currentAarti = null;
@@ -649,13 +649,13 @@
       if (currentHour >= item.startHour && currentHour <= item.endHour) {
         currentAarti = item;
       }
-      if (item.startHour > currentHour && !nextAarti) {
+      if (item.startHour > currentHour && !nextAarti && item.id !== 'noon_sayana') {
         nextAarti = item;
       }
     }
 
     if (!nextAarti) {
-      nextAarti = schedule[0]; // Next morning's Mangala Aarti
+      nextAarti = schedule[0]; // Next morning's Mangala Aarti (05:00 AM)
     }
 
     return { isOpen, currentAarti, nextAarti, currentHour };
@@ -676,7 +676,7 @@
           statusPill.className = 'live-status-pill closed';
           statusPill.innerHTML = `
             <span class="status-dot"></span>
-            <span>Closed • Opens ${nextAarti ? nextAarti.time.split('–')[0] : '4:30 AM'}</span>
+            <span>Closed • Opens ${nextAarti ? nextAarti.time.split('–')[0].trim() : '05:00 AM'}</span>
           `;
         }
       }
@@ -737,7 +737,7 @@
 
           <div class="hero-quick-stats">
             <div class="stat-item hero-stat-card animate-pulse-gold">
-              <div class="stat-val">4:30 AM</div>
+              <div class="stat-val">05:00 AM</div>
               <div class="stat-lbl">Mangala Aarti</div>
             </div>
             <div class="stat-item hero-stat-card">
@@ -860,8 +860,8 @@
             return `
               <div class="aarti-card ${isNow ? 'active-now' : ''}">
                 <div class="aarti-time-badge">⏰ ${item.time}</div>
-                <h3 class="aarti-name">${item.name}</h3>
-                <p class="aarti-desc">${item.desc}</p>
+                <h3 class="aarti-name">${escapeHTML(item.name)} ${item.subName ? `<span style="font-size:0.85rem; font-weight:500; color:var(--text-muted); display:block; margin-top:3px;">(${escapeHTML(item.subName)})</span>` : ''}</h3>
+                <p class="aarti-desc">${escapeHTML(item.desc || '')}</p>
               </div>
             `;
           }).join('')}
@@ -1133,13 +1133,14 @@
                 <div style="display: flex; gap: 12px; align-items: flex-start;">
                   <span style="color: var(--saffron-800); font-size: 1.3rem;">⏰</span>
                   <div>
-                    <strong>Visiting Timings:</strong> Morning 4:30 AM – 1:00 PM | Evening 4:30 PM – 8:30 PM
+                    <strong>Visiting Timings:</strong> Morning 05:00 AM – 01:00 PM | Evening 04:45 PM – 08:45 PM
                   </div>
                 </div>
                 <div style="display: flex; gap: 12px; align-items: flex-start;">
                   <span style="color: var(--saffron-800); font-size: 1.3rem;">📞</span>
                   <div>
-                    <strong>Temple Office / Hotline:</strong> ${data.info.phone} / ${data.info.hotline}
+                    <strong>Inquiry & Helpline:</strong> +91 90998 00489 / +91 98792 00489 <br>
+                    <span style="font-size: 0.85rem; color: var(--text-muted);">(Call Timings: 10:00 AM – 01:00 PM & 04:00 PM – 08:00 PM)</span>
                   </div>
                 </div>
               </div>
@@ -1289,9 +1290,9 @@
               <tbody>
                 ${schedule.map(s => `
                   <tr>
-                    <td><strong>${s.name}</strong></td>
-                    <td><span class="sacred-badge gold">${s.time}</span></td>
-                    <td>${s.desc}</td>
+                    <td><strong>${escapeHTML(s.name)}</strong> ${s.subName ? `<span style="font-size:0.82rem; color:var(--text-muted); display:block;">(${escapeHTML(s.subName)})</span>` : ''}</td>
+                    <td><span class="sacred-badge gold">${escapeHTML(s.time)}</span></td>
+                    <td>${escapeHTML(s.desc || '')}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -2234,7 +2235,7 @@ tvat-kṛpāpekṣako nityam ity
           <span class="sacred-badge gold">Temple Schedule</span>
           <h1 style="font-family: var(--font-serif); font-size: 2.8rem; margin: 12px 0; color: #FFFDF9;">Aarti & Darshan Timings</h1>
           <p style="color: var(--gold-300); font-size: 1.1rem; max-width: 650px; margin: 0 auto;">
-            Open 365 Days a Year: Morning 4:30 AM – 1:00 PM | Evening 4:30 PM – 8:30 PM
+            Open 365 Days a Year: Morning 05:00 AM – 01:00 PM | Evening 04:45 PM – 08:45 PM
           </p>
         </div>
       </div>
@@ -2243,9 +2244,9 @@ tvat-kṛpāpekṣako nityam ity
         <div class="aarti-timeline-grid" style="margin-bottom: 48px;">
           ${schedule.map(item => `
             <div class="aarti-card">
-              <div class="aarti-time-badge">⏰ ${item.time}</div>
-              <h3 class="aarti-name">${item.name}</h3>
-              <p class="aarti-desc">${item.desc}</p>
+              <div class="aarti-time-badge">⏰ ${escapeHTML(item.time)}</div>
+              <h3 class="aarti-name">${escapeHTML(item.name)} ${item.subName ? `<span style="font-size:0.85rem; font-weight:500; color:var(--text-muted); display:block; margin-top:3px;">(${escapeHTML(item.subName)})</span>` : ''}</h3>
+              <p class="aarti-desc">${escapeHTML(item.desc || '')}</p>
             </div>
           `).join('')}
         </div>
@@ -2255,10 +2256,21 @@ tvat-kṛpāpekṣako nityam ity
             ⚠️ Important Visitor Timing Notes:
           </h3>
           <ul style="list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 0.95rem; color: var(--text-main);">
-            <li>• Main Altar curtains are closed for Deity rest between <strong>1:00 PM and 4:30 PM</strong> daily.</li>
+            <li>• Main Altar curtains are closed for Deity rest between <strong>1:00 PM and 4:45 PM</strong> daily (Sayana).</li>
             <li>• Free Sunday Love Feast Prasadam is served every Sunday at <strong>7:30 PM</strong>.</li>
             <li>• Special festival timings on Janmashtami, Radhashtami, and Gaura Purnima are open till midnight.</li>
           </ul>
+        </div>
+
+        <div class="card" style="padding: 28px; background: #FFFFFF; border: 1.5px solid var(--gold-400); margin-top: 24px; border-radius: var(--radius-md);">
+          <h3 style="font-family: var(--font-serif); font-size: 1.3rem; color: var(--maroon-900); margin-bottom: 12px;">
+            📞 Inquiry & Call Timings:
+          </h3>
+          <p style="color: var(--text-main); font-size: 0.95rem; line-height: 1.8; margin: 0;">
+            • <strong>Morning Calls:</strong> 10:00 AM – 01:00 PM<br>
+            • <strong>Evening Calls:</strong> 04:00 PM – 08:00 PM<br>
+            • <strong>Contact:</strong> <a href="tel:+919099800489" style="color: var(--maroon-900); font-weight: 700;">+91 90998 00489</a> / <a href="tel:+919879200489" style="color: var(--maroon-900); font-weight: 700;">+91 98792 00489</a>
+          </p>
         </div>
       </div>
     `;
@@ -3110,7 +3122,7 @@ tvat-kṛpāpekṣako nityam ity
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
             <div style="background: #FFF; border-radius: var(--radius-md); padding: 22px; border: 1px solid var(--border-color);">
               <h4 style="font-family: var(--font-serif); color: var(--maroon-900); margin-bottom: 6px;">🪔 Main Prayer & Aarti Hall</h4>
-              <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.6;">Daily Mangala Aarti (4:30 AM), Sandhya Aarti (7:00 PM), and morning Japa meditation.</p>
+              <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.6;">Daily Mangala Aarti (05:00 AM), Sandhya Aarti (07:00 PM), and morning Japa meditation.</p>
             </div>
 
             <div style="background: #FFF; border-radius: var(--radius-md); padding: 22px; border: 1px solid var(--border-color);">

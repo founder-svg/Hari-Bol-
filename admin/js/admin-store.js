@@ -142,7 +142,7 @@ import {
       title: "Sri Krishna Janmashtami Mahotsav 2026",
       category: "Grand Festival",
       date: "September 04, 2026",
-      time: "04:30 AM - 12:30 AM Midnight",
+      time: "05:00 AM - 12:30 AM Midnight",
       location: "Main Temple Hall & Cultural Ground",
       description: "Celebrate the divine appearance day of Lord Sri Krishna with 108 Kalash Maha Abhishek, Midnight Maha Aarti, Akhand Kirtan & Grand Prasadam Feast for 25,000+ devotees.",
       shortDesc: "Celebrate the divine appearance day of Lord Sri Krishna with 108 Kalash Maha Abhishek, Midnight Maha Aarti, Akhand Kirtan & Grand Prasadam Feast for 25,000+ devotees.",
@@ -176,15 +176,16 @@ import {
   ];
 
   const DEFAULT_SCHEDULE = [
-    { id: "sch-1", name: "Mangala Aarti & Tulsi Puja", time: "04:30 AM", duration: "45 mins", active: true, targetPlatform: "both" },
-    { id: "sch-2", name: "Japa Meditation & Srila Prabhupada Guru Puja", time: "05:15 AM", duration: "1 hr 45 mins", active: true, targetPlatform: "both" },
-    { id: "sch-3", name: "Grand Shringar Darshan & Kirtan", time: "07:30 AM", duration: "30 mins", active: true, targetPlatform: "both" },
-    { id: "sch-4", name: "Srimad Bhagavatam Discourse", time: "08:00 AM", duration: "1 hr", active: true, targetPlatform: "both" },
-    { id: "sch-5", name: "Raj Bhog Aarti", time: "12:00 PM", duration: "30 mins", active: true, targetPlatform: "both" },
-    { id: "sch-6", name: "Dhupa Aarti & Evening Kirtan", time: "04:30 PM", duration: "30 mins", active: true, targetPlatform: "both" },
-    { id: "sch-7", name: "Sandhya Gaura Aarti", time: "07:00 PM", duration: "45 mins", active: true, targetPlatform: "both" },
-    { id: "sch-8", name: "Bhagavad Gita Pravachan", time: "07:45 PM", duration: "45 mins", active: true, targetPlatform: "both" },
-    { id: "sch-9", name: "Shayana Aarti & Temple Closing", time: "08:30 PM", duration: "15 mins", active: true, targetPlatform: "both" }
+    { id: "sch-1", name: "Mangala Aarti (Awakening & Sri Gurvashtaka)", time: "05:00 AM", duration: "45 mins", active: true, targetPlatform: "both" },
+    { id: "sch-2", name: "Darshan Aarti (Morning Shringar Darshan & Govindam)", time: "07:45 AM", duration: "5 mins", active: true, targetPlatform: "both" },
+    { id: "sch-3", name: "Guru Puja (Srila Prabhupada Pushpanjali)", time: "07:50 AM", duration: "10 mins", active: true, targetPlatform: "both" },
+    { id: "sch-4", name: "Srimad Bhagavatam Class (Daily Scripture Lecture)", time: "08:00 AM", duration: "1 hr", active: true, targetPlatform: "both" },
+    { id: "sch-5", name: "Rajbhog Aarti (Grand Midday Offering)", time: "12:00 PM", duration: "30 mins", active: true, targetPlatform: "both" },
+    { id: "sch-6", name: "Temple Closes (Afternoon Rest / Sayana)", time: "01:00 PM", duration: "Rest", active: true, targetPlatform: "both" },
+    { id: "sch-7", name: "Dhoop Aarti (Temple Reopens & Incense Offering)", time: "04:45 PM", duration: "30 mins", active: true, targetPlatform: "both" },
+    { id: "sch-8", name: "Sandhya Aarti (Evening Gaura Aarti & Kirtan)", time: "07:00 PM", duration: "30 mins", active: true, targetPlatform: "both" },
+    { id: "sch-9", name: "Bhagavad Gita Class (Evening Discourse)", time: "07:30 PM", duration: "45 mins", active: true, targetPlatform: "both" },
+    { id: "sch-10", name: "Shayan Aarti (Final Night Aarti & Temple Closes)", time: "08:45 PM", duration: "15 mins", active: true, targetPlatform: "both" }
   ];
 
   const DEFAULT_DONATIONS = [
